@@ -10,12 +10,13 @@ use chrono::{Duration, Local, NaiveDateTime};
 use rusqlite::{params, Connection, OptionalExtension};
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use serde_json::Value;
-use tauri::{AppHandle, Manager};
+use tauri::{AppHandle, Manager, WebviewWindow};
 
 const TARGET_SHEET: &str = "北京展映";
 const DATASET_KEY: &str = "festival_dataset";
 const PREFERENCE_PROFILE_KEY: &str = "preference_profile";
 const UI_STATE_KEY: &str = "ui_state";
+const DOUBAN_MATCHES_KEY: &str = "douban_matches";
 const DB_FILENAME: &str = "bjiff-helper.sqlite3";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -137,6 +138,8 @@ struct UiState {
     active_section: String,
     #[serde(default)]
     current_itinerary_ids: Vec<String>,
+    #[serde(default)]
+    douban_matches: BTreeMap<String, DoubanSubject>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -197,6 +200,23 @@ struct ExportResult {
     file_path: String,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct DoubanSubject {
+    id: String,
+    title: String,
+    year: String,
+    url: String,
+    cover_url: String,
+    rating_value: f32,
+    rating_count: i32,
+    summary: String,
+    credits: String,
+    labels: Vec<String>,
+    match_score: i32,
+    query: String,
+}
+
 fn now_text() -> String {
     Local::now().format("%Y-%m-%dT%H:%M:%S").to_string()
 }
@@ -224,8 +244,8 @@ fn exports_dir(app: &AppHandle) -> Result<PathBuf, String> {
 
 fn open_connection(app: &AppHandle) -> Result<Connection, String> {
     let path = database_path(app)?;
-    let connection =
-        Connection::open(path).map_err(|error| format!("failed to open sqlite database: {error}"))?;
+    let connection = Connection::open(path)
+        .map_err(|error| format!("failed to open sqlite database: {error}"))?;
     init_db(&connection)?;
     Ok(connection)
 }
@@ -258,8 +278,8 @@ fn write_json_value<T: Serialize>(
     key: &str,
     value: &T,
 ) -> Result<(), String> {
-    let payload =
-        serde_json::to_string(value).map_err(|error| format!("failed to serialize json value: {error}"))?;
+    let payload = serde_json::to_string(value)
+        .map_err(|error| format!("failed to serialize json value: {error}"))?;
     connection
         .execute(
             "
@@ -321,6 +341,30 @@ fn default_profile() -> PreferenceProfile {
         preferred_duration_range: [80, 190],
         prefer_with_activity: true,
     }
+}
+
+fn default_ui_state() -> UiState {
+    UiState {
+        profile: default_profile(),
+        selections: UserSelections::default(),
+        active_section: "overview".to_string(),
+        current_itinerary_ids: Vec::new(),
+        douban_matches: BTreeMap::new(),
+    }
+}
+
+fn read_douban_matches(connection: &Connection) -> Result<BTreeMap<String, DoubanSubject>, String> {
+    Ok(
+        read_json_value::<BTreeMap<String, DoubanSubject>>(connection, DOUBAN_MATCHES_KEY)?
+            .unwrap_or_default(),
+    )
+}
+
+fn write_douban_matches(
+    connection: &Connection,
+    matches: &BTreeMap<String, DoubanSubject>,
+) -> Result<(), String> {
+    write_json_value(connection, DOUBAN_MATCHES_KEY, matches)
 }
 
 fn load_cached_or_bundled_dataset(app: &AppHandle) -> Result<FestivalDataset, String> {
@@ -464,8 +508,9 @@ fn parse_excel_schedule(path: &Path) -> Result<(FestivalDataset, usize), String>
 
     let mut prices = screenings.iter().map(|screening| screening.price_cny);
     let first_price = prices.next().unwrap_or(0);
-    let (min_price, max_price) =
-        prices.fold((first_price, first_price), |(min, max), price| (min.min(price), max.max(price)));
+    let (min_price, max_price) = prices.fold((first_price, first_price), |(min, max), price| {
+        (min.min(price), max.max(price))
+    });
 
     let dataset = FestivalDataset {
         festival: "第十六届北京国际电影节·北京展映".to_string(),
@@ -516,7 +561,8 @@ fn screening_matches_filters(screening: &Screening, filters: &ScreeningFilters) 
     if !filters.date.is_empty() && filters.date != "all" && screening.date != filters.date {
         return false;
     }
-    if !filters.unit.is_empty() && filters.unit != "all" && !screening.unit.contains(&filters.unit) {
+    if !filters.unit.is_empty() && filters.unit != "all" && !screening.unit.contains(&filters.unit)
+    {
         return false;
     }
     if !filters.venue.is_empty()
@@ -611,7 +657,8 @@ fn generate_recommendations_inner(
             filtered_out_count += 1;
             continue;
         }
-        if !profile.latest_end_time.is_empty() && end_time_text(screening) > profile.latest_end_time {
+        if !profile.latest_end_time.is_empty() && end_time_text(screening) > profile.latest_end_time
+        {
             filtered_out_count += 1;
             continue;
         }
@@ -647,10 +694,13 @@ fn generate_recommendations_inner(
             continue;
         }
 
-        if selected
-            .iter()
-            .any(|picked: &RecommendationScreening| overlaps(&picked.screening, &candidate.screening, profile.buffer_minutes))
-        {
+        if selected.iter().any(|picked: &RecommendationScreening| {
+            overlaps(
+                &picked.screening,
+                &candidate.screening,
+                profile.buffer_minutes,
+            )
+        }) {
             conflict_reject_count += 1;
             continue;
         }
@@ -704,10 +754,17 @@ fn csv_escape(value: &str) -> String {
 }
 
 fn itinerary_csv(screenings: &[Screening]) -> String {
-    let mut rows = vec![
-        ["影片", "单元", "开始时间", "结束时间", "影院", "影厅", "票价", "活动信息"]
-            .join(","),
-    ];
+    let mut rows = vec![[
+        "影片",
+        "单元",
+        "开始时间",
+        "结束时间",
+        "影院",
+        "影厅",
+        "票价",
+        "活动信息",
+    ]
+    .join(",")];
 
     for screening in screenings {
         rows.push(
@@ -729,13 +786,21 @@ fn itinerary_csv(screenings: &[Screening]) -> String {
 }
 
 fn parse_starts_at(screening: &Screening) -> Result<NaiveDateTime, String> {
-    NaiveDateTime::parse_from_str(&screening.starts_at, "%Y-%m-%dT%H:%M")
-        .map_err(|error| format!("failed to parse screening start time `{}`: {error}", screening.starts_at))
+    NaiveDateTime::parse_from_str(&screening.starts_at, "%Y-%m-%dT%H:%M").map_err(|error| {
+        format!(
+            "failed to parse screening start time `{}`: {error}",
+            screening.starts_at
+        )
+    })
 }
 
 fn parse_ends_at(screening: &Screening) -> Result<NaiveDateTime, String> {
-    NaiveDateTime::parse_from_str(&screening.ends_at, "%Y-%m-%dT%H:%M")
-        .map_err(|error| format!("failed to parse screening end time `{}`: {error}", screening.ends_at))
+    NaiveDateTime::parse_from_str(&screening.ends_at, "%Y-%m-%dT%H:%M").map_err(|error| {
+        format!(
+            "failed to parse screening end time `{}`: {error}",
+            screening.ends_at
+        )
+    })
 }
 
 fn itinerary_ics(screenings: &[Screening]) -> Result<String, String> {
@@ -750,18 +815,11 @@ fn itinerary_ics(screenings: &[Screening]) -> Result<String, String> {
         let ends_at = parse_ends_at(screening)?;
         lines.push("BEGIN:VEVENT".to_string());
         lines.push(format!("UID:{}@bjiff-helper", screening.id));
-        lines.push(format!(
-            "DTSTAMP:{}",
-            Local::now().format("%Y%m%dT%H%M%S")
-        ));
+        lines.push(format!("DTSTAMP:{}", Local::now().format("%Y%m%dT%H%M%S")));
         lines.push(format!("DTSTART:{}", starts_at.format("%Y%m%dT%H%M%S")));
         lines.push(format!("DTEND:{}", ends_at.format("%Y%m%dT%H%M%S")));
         lines.push(format!("SUMMARY:{}", screening.title_zh));
-        lines.push(format!(
-            "LOCATION:{} {}",
-            screening.venue,
-            screening.hall
-        ));
+        lines.push(format!("LOCATION:{} {}", screening.venue, screening.hall));
         let description = [
             format!("单元：{}", screening.unit),
             format!("票价：{} 元", screening.price_cny),
@@ -781,6 +839,41 @@ fn itinerary_ics(screenings: &[Screening]) -> Result<String, String> {
 
     lines.push("END:VCALENDAR".to_string());
     Ok(lines.join("\r\n"))
+}
+
+fn open_url_with_system(url: &str) -> Result<(), String> {
+    #[cfg(target_os = "macos")]
+    let mut command = {
+        let mut command = Command::new("open");
+        command.arg(url);
+        command
+    };
+
+    #[cfg(target_os = "windows")]
+    let mut command = {
+        let mut command = Command::new("cmd");
+        command.args(["/C", "start", "", url]);
+        command
+    };
+
+    #[cfg(all(unix, not(target_os = "macos")))]
+    let mut command = {
+        let mut command = Command::new("xdg-open");
+        command.arg(url);
+        command
+    };
+
+    let status = command
+        .status()
+        .map_err(|error| format!("failed to open external url: {error}"))?;
+
+    if status.success() {
+        Ok(())
+    } else {
+        Err(format!(
+            "failed to open external url, exit status: {status}"
+        ))
+    }
 }
 
 fn choose_excel_file() -> Result<Option<String>, String> {
@@ -852,7 +945,8 @@ fn list_saved_itineraries_inner(
 
     let mut summaries = Vec::new();
     for item in mapped {
-        let itinerary = item.map_err(|error| format!("failed to read saved itinerary row: {error}"))?;
+        let itinerary =
+            item.map_err(|error| format!("failed to read saved itinerary row: {error}"))?;
         let screenings = itinerary
             .screening_ids
             .iter()
@@ -930,7 +1024,21 @@ fn reset_dataset(app: AppHandle) -> Result<Value, String> {
 #[tauri::command]
 fn load_ui_state(app: AppHandle) -> Result<Value, String> {
     let connection = open_connection(&app)?;
-    let state = read_json_value::<UiState>(&connection, UI_STATE_KEY)?;
+    let cached_matches = read_douban_matches(&connection)?;
+    let state = match read_json_value::<UiState>(&connection, UI_STATE_KEY)? {
+        Some(mut state) => {
+            if !cached_matches.is_empty() {
+                state.douban_matches = cached_matches;
+            }
+            Some(state)
+        }
+        None if !cached_matches.is_empty() => {
+            let mut state = default_ui_state();
+            state.douban_matches = cached_matches;
+            Some(state)
+        }
+        None => None,
+    };
     serde_json::to_value(state).map_err(|error| format!("failed to serialize ui state: {error}"))
 }
 
@@ -940,7 +1048,9 @@ fn save_ui_state(app: AppHandle, state: Value) -> Result<Value, String> {
     let connection = open_connection(&app)?;
     write_json_value(&connection, UI_STATE_KEY, &state)?;
     write_json_value(&connection, PREFERENCE_PROFILE_KEY, &state.profile)?;
-    serde_json::to_value(state).map_err(|error| format!("failed to serialize stored ui state: {error}"))
+    write_douban_matches(&connection, &state.douban_matches)?;
+    serde_json::to_value(state)
+        .map_err(|error| format!("failed to serialize stored ui state: {error}"))
 }
 
 #[tauri::command]
@@ -956,7 +1066,10 @@ fn list_itineraries(app: AppHandle) -> Result<Value, String> {
 fn delete_itinerary(app: AppHandle, itinerary_id: String) -> Result<Value, String> {
     let connection = open_connection(&app)?;
     let deleted = connection
-        .execute("DELETE FROM itineraries WHERE id = ?1", params![itinerary_id])
+        .execute(
+            "DELETE FROM itineraries WHERE id = ?1",
+            params![itinerary_id],
+        )
         .map_err(|error| format!("failed to delete itinerary: {error}"))?;
 
     serde_json::to_value(make_action_result(
@@ -1031,12 +1144,8 @@ fn save_preferences(app: AppHandle, profile: Value) -> Result<Value, String> {
     let profile = parse_command_payload::<PreferenceProfile>(profile, "preference profile")?;
     let connection = open_connection(&app)?;
     write_json_value(&connection, PREFERENCE_PROFILE_KEY, &profile)?;
-    let next_ui_state = read_json_value::<UiState>(&connection, UI_STATE_KEY)?.unwrap_or(UiState {
-        profile: default_profile(),
-        selections: UserSelections::default(),
-        active_section: "overview".to_string(),
-        current_itinerary_ids: Vec::new(),
-    });
+    let next_ui_state =
+        read_json_value::<UiState>(&connection, UI_STATE_KEY)?.unwrap_or_else(default_ui_state);
     write_json_value(
         &connection,
         UI_STATE_KEY,
@@ -1047,6 +1156,63 @@ fn save_preferences(app: AppHandle, profile: Value) -> Result<Value, String> {
     )?;
     serde_json::to_value(profile)
         .map_err(|error| format!("failed to serialize stored preference profile: {error}"))
+}
+
+#[tauri::command]
+fn open_external_url(url: String) -> Result<(), String> {
+    let normalized = url.trim();
+    if !(normalized.starts_with("https://") || normalized.starts_with("http://")) {
+        return Err("only http and https urls are supported".to_string());
+    }
+
+    open_url_with_system(normalized)
+}
+
+#[tauri::command]
+fn minimize_window(window: WebviewWindow) -> Result<(), String> {
+    window
+        .minimize()
+        .map_err(|error| format!("failed to minimize window: {error}"))
+}
+
+#[tauri::command]
+fn start_dragging_window(window: WebviewWindow) -> Result<(), String> {
+    window
+        .start_dragging()
+        .map_err(|error| format!("failed to start window dragging: {error}"))
+}
+
+#[tauri::command]
+fn window_maximized_state(window: WebviewWindow) -> Result<bool, String> {
+    window
+        .is_maximized()
+        .map_err(|error| format!("failed to inspect window state: {error}"))
+}
+
+#[tauri::command]
+fn toggle_maximize_window(window: WebviewWindow) -> Result<bool, String> {
+    let is_maximized = window
+        .is_maximized()
+        .map_err(|error| format!("failed to inspect window state: {error}"))?;
+
+    if is_maximized {
+        window
+            .unmaximize()
+            .map_err(|error| format!("failed to restore window: {error}"))?;
+        Ok(false)
+    } else {
+        window
+            .maximize()
+            .map_err(|error| format!("failed to maximize window: {error}"))?;
+        Ok(true)
+    }
+}
+
+#[tauri::command]
+fn close_window(window: WebviewWindow) -> Result<(), String> {
+    window
+        .close()
+        .map_err(|error| format!("failed to close window: {error}"))
 }
 
 #[tauri::command]
@@ -1101,11 +1267,16 @@ fn save_itinerary(app: AppHandle, screening_ids: Vec<String>) -> Result<Value, S
         )
         .map_err(|error| format!("failed to save itinerary: {error}"))?;
 
-    serde_json::to_value(itinerary).map_err(|error| format!("failed to serialize itinerary: {error}"))
+    serde_json::to_value(itinerary)
+        .map_err(|error| format!("failed to serialize itinerary: {error}"))
 }
 
 #[tauri::command]
-fn export_itinerary(app: AppHandle, itinerary_id: String, format: String) -> Result<ExportResult, String> {
+fn export_itinerary(
+    app: AppHandle,
+    itinerary_id: String,
+    format: String,
+) -> Result<ExportResult, String> {
     let connection = open_connection(&app)?;
     let stored = connection
         .query_row(
@@ -1117,15 +1288,14 @@ fn export_itinerary(app: AppHandle, itinerary_id: String, format: String) -> Res
             params![itinerary_id],
             |row| {
                 let screening_ids_json: String = row.get(0)?;
-                let screening_ids = serde_json::from_str::<Vec<String>>(&screening_ids_json).map_err(
-                    |error| {
+                let screening_ids = serde_json::from_str::<Vec<String>>(&screening_ids_json)
+                    .map_err(|error| {
                         rusqlite::Error::FromSqlConversionFailure(
                             screening_ids_json.len(),
                             rusqlite::types::Type::Text,
                             Box::new(error),
                         )
-                    },
-                )?;
+                    })?;
                 Ok(StoredItinerary {
                     id: itinerary_id.clone(),
                     screening_ids,
@@ -1149,14 +1319,8 @@ fn export_itinerary(app: AppHandle, itinerary_id: String, format: String) -> Res
 
     let normalized_format = format.to_lowercase();
     let (file_name, content) = match normalized_format.as_str() {
-        "csv" => (
-            format!("{}.csv", stored.id),
-            itinerary_csv(&screenings),
-        ),
-        "ics" => (
-            format!("{}.ics", stored.id),
-            itinerary_ics(&screenings)?,
-        ),
+        "csv" => (format!("{}.csv", stored.id), itinerary_csv(&screenings)),
+        "ics" => (format!("{}.ics", stored.id), itinerary_ics(&screenings)?),
         other => return Err(format!("unsupported export format: {other}")),
     };
 
@@ -1166,11 +1330,7 @@ fn export_itinerary(app: AppHandle, itinerary_id: String, format: String) -> Res
     Ok(ExportResult {
         status: "exported".to_string(),
         format: normalized_format,
-        message: format!(
-            "已导出 {} 场影片到 {}。",
-            screenings.len(),
-            path.display()
-        ),
+        message: format!("已导出 {} 场影片到 {}。", screenings.len(), path.display()),
         file_path: path.to_string_lossy().to_string(),
     })
 }
@@ -1190,6 +1350,12 @@ fn main() {
             import_schedule,
             list_screenings,
             save_preferences,
+            open_external_url,
+            minimize_window,
+            start_dragging_window,
+            window_maximized_state,
+            toggle_maximize_window,
+            close_window,
             generate_recommendations,
             save_itinerary,
             export_itinerary

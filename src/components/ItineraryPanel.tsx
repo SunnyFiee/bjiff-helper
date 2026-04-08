@@ -82,7 +82,7 @@ export function ItineraryPanel({
               </Typography>
               <Typography variant="h4">手动管理片单</Typography>
               <Typography color="text.secondary" sx={{ mt: 1 }}>
-                推荐现在只会生成草案，不会自动写进当前片单。真正的当前片单由你在时间轴里手动挑，或显式应用推荐草案。
+                可从推荐草案或时间轴加入当前片单。
               </Typography>
             </Box>
             <Stack direction="row" spacing={1} sx={{ flexWrap: "wrap" }}>
@@ -146,8 +146,8 @@ export function ItineraryPanel({
           >
             {statusMessage ||
               (draftRecommendation
-                ? `当前有一份推荐草案，共 ${draftRecommendation.selected.length} 场，尚未自动写入当前片单。`
-                : "还没有生成推荐草案。点“生成推荐草案”后再决定是否把它加入当前片单。")}
+                ? `当前有 ${draftRecommendation.selected.length} 场推荐草案。`
+                : "还没有推荐草案。")}
           </Alert>
 
           <Box
@@ -174,7 +174,7 @@ export function ItineraryPanel({
 
           {currentScreenings.length === 0 ? (
             <Alert severity="warning" variant="outlined">
-              当前片单还是空的。你可以在时间轴里逐场加入，也可以先生成推荐草案，再显式把草案加入当前片单。
+              当前片单为空。
             </Alert>
           ) : null}
 

@@ -1,4 +1,4 @@
-import type { PreferenceProfile, UserSelections } from "./types";
+import type { DoubanSubject, PreferenceProfile, UserSelections } from "./types";
 import { invokeCommand, isTauriRuntime } from "./tauri-runtime";
 
 const STORAGE_KEY = "bjiff-helper/state/v1";
@@ -9,6 +9,7 @@ export interface PersistedState {
   selections: UserSelections;
   activeSection: string;
   currentItineraryIds?: string[];
+  doubanMatches?: Record<string, DoubanSubject | undefined>;
 }
 
 export async function loadPersistedState() {

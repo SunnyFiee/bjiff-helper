@@ -1,3 +1,4 @@
+import { useState } from "react";
 import {
   Alert,
   Box,
@@ -13,7 +14,13 @@ import {
 } from "@mui/material";
 import { alpha } from "@mui/material/styles";
 import { formatCurrency, formatDateTimeLabel, formatDuration } from "../lib/format";
+import {
+  buildDoubanSearchUrl,
+  buildFilmDoubanKey,
+  formatDoubanRatingCount
+} from "../lib/douban";
 import type {
+  DoubanSubject,
   Film,
   FilmVote,
   Screening,
@@ -38,10 +45,16 @@ interface FilmExplorerProps {
   screeningVotes: Record<string, ScreeningVote | undefined>;
   markedFilmCount: number;
   markedScreeningCount: number;
+  doubanMatches: Record<string, DoubanSubject | undefined>;
+  isDesktop: boolean;
   onFiltersChange: (next: ScreeningFilters) => void;
   onClearFilters: () => void;
   onFilmVote: (filmId: string, vote?: FilmVote) => void;
   onScreeningVote: (screeningId: string, vote?: ScreeningVote) => void;
+  onSearchDouban: (film: Film) => void;
+  onOpenDoubanSubject: (match: DoubanSubject) => void;
+  onClearDoubanMatch: (filmKey: string) => void;
+  onManualBindDouban: (film: Film, input: string) => boolean;
 }
 
 export function FilmExplorer({
@@ -56,12 +69,19 @@ export function FilmExplorer({
   screeningVotes,
   markedFilmCount,
   markedScreeningCount,
+  doubanMatches,
+  isDesktop,
   onFiltersChange,
   onClearFilters,
   onFilmVote,
-  onScreeningVote
+  onScreeningVote,
+  onSearchDouban,
+  onOpenDoubanSubject,
+  onClearDoubanMatch,
+  onManualBindDouban
 }: FilmExplorerProps) {
   const visibleCards = cards.slice(0, 36);
+  const [manualDoubanInputs, setManualDoubanInputs] = useState<Record<string, string>>({});
 
   return (
     <Card>
@@ -217,6 +237,8 @@ export function FilmExplorer({
               const itineraryCount = screenings.filter((screening) =>
                 currentItineraryIds.has(screening.id)
               ).length;
+              const filmKey = buildFilmDoubanKey(film);
+              const selectedDoubanMatch = doubanMatches[filmKey];
 
               return (
                 <Card
@@ -297,6 +319,120 @@ export function FilmExplorer({
                           variant={itineraryCount > 0 ? "filled" : "outlined"}
                         />
                       </Stack>
+
+                      <Paper
+                        sx={{
+                          backgroundColor: (theme) => alpha(theme.palette.primary.main, 0.04),
+                          border: (theme) =>
+                            `1px solid ${alpha(theme.palette.primary.main, 0.12)}`,
+                          p: 1.5
+                        }}
+                        variant="outlined"
+                      >
+                        <Stack spacing={1.5}>
+                          <Stack
+                            direction={{ xs: "column", sm: "row" }}
+                            spacing={1}
+                            sx={{ justifyContent: "space-between" }}
+                          >
+                            <Box>
+                              <Typography variant="subtitle2">豆瓣条目</Typography>
+                              <Typography color="text.secondary" variant="body2">
+                                {selectedDoubanMatch
+                                  ? "已匹配豆瓣条目。"
+                                  : "按片名搜索豆瓣条目。"}
+                              </Typography>
+                            </Box>
+                            <Stack direction="row" spacing={1}>
+                              <Button
+                                onClick={() => onSearchDouban(film)}
+                                size="small"
+                                variant="outlined"
+                              >
+                                {selectedDoubanMatch
+                                  ? "重新搜索"
+                                  : isDesktop
+                                    ? "打开豆瓣"
+                                    : "网页搜索"}
+                              </Button>
+                              {selectedDoubanMatch ? (
+                                <Button
+                                  onClick={() => onOpenDoubanSubject(selectedDoubanMatch)}
+                                  size="small"
+                                  variant="text"
+                                >
+                                  打开条目
+                                </Button>
+                              ) : null}
+                              {selectedDoubanMatch ? (
+                                <Button
+                                  color="secondary"
+                                  onClick={() => onClearDoubanMatch(filmKey)}
+                                  size="small"
+                                  variant="text"
+                                >
+                                  清除
+                                </Button>
+                              ) : null}
+                            </Stack>
+                          </Stack>
+
+                          {selectedDoubanMatch ? (
+                            <DoubanResultCard
+                              match={selectedDoubanMatch}
+                              onOpen={() => onOpenDoubanSubject(selectedDoubanMatch)}
+                            />
+                          ) : (
+                            <Typography color="text.secondary" variant="body2">
+                              还没有锁定豆瓣条目。建议先打开豆瓣搜索页，确认影片后把条目链接粘到下面完成绑定。
+                            </Typography>
+                          )}
+
+                          <Stack
+                            direction={{ xs: "column", sm: "row" }}
+                            spacing={1}
+                            sx={{ alignItems: { sm: "center" } }}
+                          >
+                            <TextField
+                              label="手动绑定"
+                              onChange={(event) =>
+                                setManualDoubanInputs((current) => ({
+                                  ...current,
+                                  [filmKey]: event.target.value
+                                }))
+                              }
+                              placeholder="粘贴豆瓣条目 URL 或 subject id"
+                              size="small"
+                              value={manualDoubanInputs[filmKey] ?? ""}
+                            />
+                            <Button
+                              onClick={() => {
+                                const success = onManualBindDouban(
+                                  film,
+                                  manualDoubanInputs[filmKey] ?? ""
+                                );
+                                if (success) {
+                                  setManualDoubanInputs((current) => ({
+                                    ...current,
+                                    [filmKey]: ""
+                                  }));
+                                }
+                              }}
+                              size="small"
+                              variant="outlined"
+                            >
+                              手动绑定
+                            </Button>
+                          </Stack>
+
+                          {!isDesktop ? (
+                            <Typography color="text.secondary" variant="caption">
+                              当前会直接打开豆瓣搜索页：
+                              {" "}{buildDoubanSearchUrl(film)}
+                            </Typography>
+                          ) : null}
+                        </Stack>
+                      </Paper>
 
                       <Stack spacing={1.25}>
                         {screenings.slice(0, 5).map((screening) => {
@@ -424,5 +560,122 @@ export function FilmExplorer({
         </Stack>
       </CardContent>
     </Card>
+  );
+}
+
+function DoubanResultCard({
+  match,
+  onOpen
+}: {
+  match: DoubanSubject;
+  onOpen: () => void;
+}) {
+  return (
+    <Paper
+      sx={{
+        backgroundColor: (theme) =>
+          alpha(theme.palette.success.main, 0.08),
+        border: (theme) =>
+          `1px solid ${alpha(theme.palette.success.main, 0.28)}`,
+        p: 1.25
+      }}
+      variant="outlined"
+    >
+      <Stack direction={{ xs: "column", sm: "row" }} spacing={1.5}>
+        {match.coverUrl ? (
+          <Box
+            alt={match.title}
+            component="img"
+            loading="lazy"
+            referrerPolicy="no-referrer"
+            src={match.coverUrl}
+            sx={{
+              borderRadius: 1.5,
+              height: 112,
+              objectFit: "cover",
+              width: 80
+            }}
+          />
+        ) : (
+          <Box
+            sx={{
+              alignItems: "center",
+              bgcolor: (theme) => alpha(theme.palette.primary.main, 0.08),
+              borderRadius: 1.5,
+              color: "text.secondary",
+              display: "flex",
+              fontSize: 12,
+              height: 112,
+              justifyContent: "center",
+              px: 1,
+              textAlign: "center",
+              width: 80
+            }}
+          >
+            豆瓣条目
+          </Box>
+        )}
+
+        <Stack spacing={1} sx={{ flex: 1, minWidth: 0 }}>
+          <Stack
+            direction={{ xs: "column", sm: "row" }}
+            spacing={1}
+            sx={{ justifyContent: "space-between" }}
+          >
+            <Box sx={{ minWidth: 0 }}>
+              <Typography sx={{ fontWeight: 700 }} variant="body1">
+                {match.title}
+              </Typography>
+              <Typography color="text.secondary" variant="body2">
+                {match.year || "年份待补充"} · 匹配分 {match.matchScore}
+              </Typography>
+            </Box>
+            <Stack direction="row" spacing={1} sx={{ flexWrap: "wrap" }}>
+              <Chip
+                color={match.ratingValue > 0 ? "primary" : "default"}
+                label={
+                  match.ratingValue > 0
+                    ? `豆瓣 ${match.ratingValue.toFixed(1)}`
+                    : "暂无评分"
+                }
+                size="small"
+                variant="outlined"
+              />
+              <Chip
+                label={`${formatDoubanRatingCount(match.ratingCount)} 人评价`}
+                size="small"
+                variant="outlined"
+              />
+            </Stack>
+          </Stack>
+
+          {match.summary ? (
+            <Typography color="text.secondary" variant="body2">
+              {match.summary}
+            </Typography>
+          ) : null}
+
+          {match.credits ? (
+            <Typography color="text.secondary" variant="body2">
+              主创：{match.credits}
+            </Typography>
+          ) : null}
+
+          {match.labels.length > 0 ? (
+            <Stack direction="row" spacing={1} sx={{ flexWrap: "wrap" }}>
+              {match.labels.map((label) => (
+                <Chip key={label} label={label} size="small" variant="outlined" />
+              ))}
+            </Stack>
+          ) : null}
+
+          <Stack direction="row" spacing={1} sx={{ flexWrap: "wrap" }}>
+            <Button onClick={onOpen} size="small" variant="contained">
+              打开豆瓣
+            </Button>
+          </Stack>
+        </Stack>
+      </Stack>
+    </Paper>
   );
 }

@@ -51,3 +51,27 @@ export async function deleteSavedItinerary(itineraryId: string) {
 export async function clearSavedItineraries() {
   return invokeCommand<ActionResult>("clear_itineraries");
 }
+
+export async function openExternalUrlFromDesktop(url: string) {
+  return invokeCommand<void>("open_external_url", { url });
+}
+
+export async function minimizeDesktopWindow() {
+  return invokeCommand<void>("minimize_window");
+}
+
+export async function startDraggingDesktopWindow() {
+  return invokeCommand<void>("start_dragging_window");
+}
+
+export async function getDesktopWindowMaximizedState() {
+  return invokeCommand<boolean>("window_maximized_state");
+}
+
+export async function toggleMaximizeDesktopWindow() {
+  return invokeCommand<boolean>("toggle_maximize_window");
+}
+
+export async function closeDesktopWindow() {
+  return invokeCommand<void>("close_window");
+}

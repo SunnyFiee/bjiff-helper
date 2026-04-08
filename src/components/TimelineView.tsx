@@ -41,20 +41,82 @@ interface TimelineItem {
   laneCount: number;
 }
 
-const HOURS = [
-  "08:00",
-  "10:00",
-  "12:00",
-  "14:00",
-  "16:00",
-  "18:00",
-  "20:00",
-  "22:00"
+interface TimelineWindow {
+  startHour: number;
+  endHour: number;
+  totalMinutes: number;
+  hourMarks: string[];
+}
+
+interface DayTransition {
+  from: Screening;
+  to: Screening;
+  gapMinutes: number;
+  status: "conflict" | "tight" | "ok";
+}
+
+interface FocusedSelectionContext {
+  overlaps: Screening[];
+  previous: Screening | null;
+  next: Screening | null;
+  gapBefore: number | null;
+  gapAfter: number | null;
+}
+
+interface FocusedSelectionFeedback {
+  severity: "success" | "warning" | "error";
+  title: string;
+  lines: string[];
+}
+
+type TimelineFilter = "all" | "itinerary" | "recommended" | "boosted" | "blocked";
+type TimelineDensity = "compact" | "balanced" | "expanded";
+
+const FILTER_OPTIONS: TimelineFilter[] = [
+  "all",
+  "itinerary",
+  "recommended",
+  "boosted",
+  "blocked"
 ];
 
-function minutesFromMorning(dateTime: string) {
+const FILTER_LABELS: Record<TimelineFilter, string> = {
+  all: "全部场次",
+  itinerary: "当前片单",
+  recommended: "推荐草案",
+  boosted: "已优先",
+  blocked: "已屏蔽"
+};
+
+const DENSITY_OPTIONS: TimelineDensity[] = ["compact", "balanced", "expanded"];
+
+const DENSITY_LABELS: Record<TimelineDensity, string> = {
+  compact: "紧凑",
+  balanced: "均衡",
+  expanded: "展开"
+};
+
+const DENSITY_CONFIG: Record<
+  TimelineDensity,
+  { minHeight: number; pixelsPerHour: number; laneWidth: number }
+> = {
+  compact: { minHeight: 880, pixelsPerHour: 112, laneWidth: 220 },
+  balanced: { minHeight: 1080, pixelsPerHour: 136, laneWidth: 250 },
+  expanded: { minHeight: 1320, pixelsPerHour: 164, laneWidth: 280 }
+};
+
+const TIMELINE_GUTTER_WIDTH = 132;
+const TIMELINE_TRAILING_PADDING = 56;
+const TIMELINE_CARD_GAP = 14;
+const TIMELINE_CARD_MIN_HEIGHT = 34;
+
+function minutesSinceMidnight(dateTime: string) {
   const date = new Date(dateTime);
-  return date.getHours() * 60 + date.getMinutes() - 8 * 60;
+  return date.getHours() * 60 + date.getMinutes();
+}
+
+function minutesFromTimelineStart(dateTime: string, startHour: number) {
+  return minutesSinceMidnight(dateTime) - startHour * 60;
 }
 
 function screeningStart(screening: Screening) {
@@ -63,6 +125,41 @@ function screeningStart(screening: Screening) {
 
 function screeningEnd(screening: Screening) {
   return new Date(screening.endsAt).getTime();
+}
+
+function formatHourMark(hour: number) {
+  return `${String(hour).padStart(2, "0")}:00`;
+}
+
+function buildTimelineWindow(screenings: Screening[]): TimelineWindow {
+  if (screenings.length === 0) {
+    return {
+      startHour: 8,
+      endHour: 23,
+      totalMinutes: 15 * 60,
+      hourMarks: Array.from({ length: 16 }, (_, index) => formatHourMark(8 + index))
+    };
+  }
+
+  const earliestStart = Math.min(...screenings.map((screening) => minutesSinceMidnight(screening.startsAt)));
+  const latestEnd = Math.max(...screenings.map((screening) => minutesSinceMidnight(screening.endsAt)));
+
+  let startHour = Math.max(6, Math.floor(earliestStart / 60) - 1);
+  let endHour = Math.min(24, Math.ceil(latestEnd / 60) + 1);
+  if (endHour - startHour < 6) {
+    endHour = Math.min(24, startHour + 6);
+    startHour = Math.max(6, endHour - 6);
+  }
+
+  return {
+    startHour,
+    endHour,
+    totalMinutes: Math.max((endHour - startHour) * 60, 60),
+    hourMarks: Array.from(
+      { length: endHour - startHour + 1 },
+      (_, index) => formatHourMark(startHour + index)
+    )
+  };
 }
 
 function layoutTimeline(screenings: Screening[]) {
@@ -103,6 +200,165 @@ function pickDefaultFocusedId(
   return recommended?.id ?? screenings[0]?.id ?? null;
 }
 
+function analyzeDayTransitions(screenings: Screening[], bufferMinutes: number) {
+  const sorted = [...screenings].sort((left, right) => left.startsAt.localeCompare(right.startsAt));
+  const transitions: DayTransition[] = [];
+  let conflictCount = 0;
+  let tightCount = 0;
+  let minGapMinutes: number | null = null;
+
+  for (let index = 1; index < sorted.length; index += 1) {
+    const from = sorted[index - 1];
+    const to = sorted[index];
+    const gapMinutes = Math.round((screeningStart(to) - screeningEnd(from)) / 60000);
+    const status =
+      gapMinutes < 0 ? "conflict" : gapMinutes < bufferMinutes ? "tight" : "ok";
+
+    if (status === "conflict") {
+      conflictCount += 1;
+    } else if (status === "tight") {
+      tightCount += 1;
+    }
+
+    minGapMinutes = minGapMinutes === null ? gapMinutes : Math.min(minGapMinutes, gapMinutes);
+    transitions.push({ from, to, gapMinutes, status });
+  }
+
+  return {
+    sorted,
+    transitions,
+    conflictCount,
+    tightCount,
+    minGapMinutes
+  };
+}
+
+function analyzeFocusedSelection(
+  screening: Screening,
+  dayCurrentItinerary: Screening[]
+): FocusedSelectionContext {
+  const others = dayCurrentItinerary
+    .filter((item) => item.id !== screening.id)
+    .sort((left, right) => left.startsAt.localeCompare(right.startsAt));
+  const screeningStartsAt = screeningStart(screening);
+  const screeningEndsAt = screeningEnd(screening);
+
+  const overlaps = others.filter(
+    (item) =>
+      screeningStartsAt < screeningEnd(item) && screeningEndsAt > screeningStart(item)
+  );
+
+  let previous: Screening | null = null;
+  let next: Screening | null = null;
+
+  for (const item of others) {
+    const itemEndsAt = screeningEnd(item);
+    const itemStartsAt = screeningStart(item);
+
+    if (itemEndsAt <= screeningStartsAt) {
+      previous = item;
+      continue;
+    }
+
+    if (!next && itemStartsAt >= screeningEndsAt) {
+      next = item;
+      break;
+    }
+  }
+
+  return {
+    overlaps,
+    previous,
+    next,
+    gapBefore: previous
+      ? Math.round((screeningStartsAt - screeningEnd(previous)) / 60000)
+      : null,
+    gapAfter: next ? Math.round((screeningStart(next) - screeningEndsAt) / 60000) : null
+  };
+}
+
+function buildFocusedSelectionFeedback(
+  context: FocusedSelectionContext,
+  bufferMinutes: number
+): FocusedSelectionFeedback {
+  if (context.overlaps.length > 0) {
+    return {
+      severity: "error",
+      title: "和当前片单存在直接冲突",
+      lines: context.overlaps.map(
+        (screening) =>
+          `会和《${screening.titleZh}》时间重叠，后者是 ${formatTimeLabel(
+            screening.startsAt
+          )} - ${formatTimeLabel(screening.endsAt)}。`
+      )
+    };
+  }
+
+  const warnings: string[] = [];
+  if (context.previous && context.gapBefore !== null && context.gapBefore < bufferMinutes) {
+    warnings.push(
+      `和上一场《${context.previous.titleZh}》之间只有 ${context.gapBefore} 分钟，低于你设定的 ${bufferMinutes} 分钟缓冲。`
+    );
+  }
+  if (context.next && context.gapAfter !== null && context.gapAfter < bufferMinutes) {
+    warnings.push(
+      `到下一场《${context.next.titleZh}》开场前只有 ${context.gapAfter} 分钟，低于你设定的 ${bufferMinutes} 分钟缓冲。`
+    );
+  }
+
+  if (warnings.length > 0) {
+    return {
+      severity: "warning",
+      title: "和当前片单的切换偏紧",
+      lines: warnings
+    };
+  }
+
+  const lines: string[] = [];
+  if (context.previous && context.gapBefore !== null) {
+    lines.push(
+      `上一场《${context.previous.titleZh}》结束后，有 ${context.gapBefore} 分钟缓冲再接这场。`
+    );
+  }
+  if (context.next && context.gapAfter !== null) {
+    lines.push(
+      `这场结束后，到《${context.next.titleZh}》开场前还有 ${context.gapAfter} 分钟。`
+    );
+  }
+
+  return {
+    severity: "success",
+    title: "和当前片单可以顺畅衔接",
+    lines:
+      lines.length > 0 ? lines : ["当天当前片单里还没有冲突场次。"]
+  };
+}
+
+function formatGapSummary(gapMinutes: number | null) {
+  if (gapMinutes === null) {
+    return "等待排入第 2 场";
+  }
+  if (gapMinutes < 0) {
+    return `重叠 ${Math.abs(gapMinutes)} 分`;
+  }
+  if (gapMinutes === 0) {
+    return "无缝衔接";
+  }
+  return `最短 ${gapMinutes} 分`;
+}
+
+function describeTransition(transition: DayTransition, bufferMinutes: number) {
+  if (transition.gapMinutes < 0) {
+    return `《${transition.from.titleZh}》和《${transition.to.titleZh}》重叠 ${Math.abs(
+      transition.gapMinutes
+    )} 分钟`;
+  }
+  if (transition.gapMinutes < bufferMinutes) {
+    return `《${transition.from.titleZh}》到《${transition.to.titleZh}》只有 ${transition.gapMinutes} 分钟缓冲`;
+  }
+  return `《${transition.from.titleZh}》到《${transition.to.titleZh}》相隔 ${transition.gapMinutes} 分钟`;
+}
+
 export function TimelineView({
   dataset,
   profile,
@@ -116,6 +372,8 @@ export function TimelineView({
   const dateOptions = profile.activeDates.length > 0 ? profile.activeDates : dataset.dates;
   const [activeDate, setActiveDate] = useState<string>(dateOptions[0] ?? dataset.dates[0] ?? "");
   const [focusedScreeningId, setFocusedScreeningId] = useState<string | null>(null);
+  const [timelineFilter, setTimelineFilter] = useState<TimelineFilter>("all");
+  const [timelineDensity, setTimelineDensity] = useState<TimelineDensity>("balanced");
 
   useEffect(() => {
     if (dateOptions.length === 0) {
@@ -140,27 +398,67 @@ export function TimelineView({
   }, [dataset.screenings]);
 
   const activeScreenings = screeningsByDate.get(activeDate) ?? [];
+  const recommendedIds = useMemo(
+    () => new Set((recommendation?.selected ?? []).map((screening) => screening.id)),
+    [recommendation]
+  );
+
+  const filterCounts = useMemo(
+    () => ({
+      all: activeScreenings.length,
+      itinerary: activeScreenings.filter((screening) => currentItineraryIds.has(screening.id))
+        .length,
+      recommended: activeScreenings.filter((screening) => recommendedIds.has(screening.id)).length,
+      boosted: activeScreenings.filter(
+        (screening) => selections.screeningVotes[screening.id] === "boost"
+      ).length,
+      blocked: activeScreenings.filter(
+        (screening) => selections.screeningVotes[screening.id] === "block"
+      ).length
+    }),
+    [activeScreenings, currentItineraryIds, recommendedIds, selections.screeningVotes]
+  );
+
+  const visibleScreenings = useMemo(() => {
+    return activeScreenings.filter((screening) => {
+      if (timelineFilter === "itinerary") {
+        return currentItineraryIds.has(screening.id);
+      }
+      if (timelineFilter === "recommended") {
+        return recommendedIds.has(screening.id);
+      }
+      if (timelineFilter === "boosted") {
+        return selections.screeningVotes[screening.id] === "boost";
+      }
+      if (timelineFilter === "blocked") {
+        return selections.screeningVotes[screening.id] === "block";
+      }
+      return true;
+    });
+  }, [
+    activeScreenings,
+    currentItineraryIds,
+    recommendedIds,
+    selections.screeningVotes,
+    timelineFilter
+  ]);
 
   useEffect(() => {
-    const nextFocusedId = pickDefaultFocusedId(
-      activeDate,
-      activeScreenings,
-      recommendation,
-      currentItineraryIds
-    );
-    if (!nextFocusedId) {
+    if (visibleScreenings.length === 0) {
       setFocusedScreeningId(null);
       return;
     }
 
-    const stillExists = activeScreenings.some((screening) => screening.id === focusedScreeningId);
+    const stillExists = visibleScreenings.some((screening) => screening.id === focusedScreeningId);
     if (!stillExists) {
-      setFocusedScreeningId(nextFocusedId);
+      setFocusedScreeningId(
+        pickDefaultFocusedId(activeDate, visibleScreenings, recommendation, currentItineraryIds)
+      );
     }
-  }, [activeDate, activeScreenings, currentItineraryIds, focusedScreeningId, recommendation]);
+  }, [activeDate, currentItineraryIds, focusedScreeningId, recommendation, visibleScreenings]);
 
   const focusedScreening =
-    activeScreenings.find((screening) => screening.id === focusedScreeningId) ?? null;
+    visibleScreenings.find((screening) => screening.id === focusedScreeningId) ?? null;
   const focusedRejectReasons = focusedScreening
     ? getHardRejectReasons(focusedScreening, profile, selections)
     : [];
@@ -170,17 +468,77 @@ export function TimelineView({
   const focusedFilmVote = focusedScreening
     ? selections.filmVotes[focusedScreening.filmId]
     : undefined;
-  const recommendedIds = new Set(
-    (recommendation?.selected ?? []).map((screening) => screening.id)
+
+  const densityConfig = DENSITY_CONFIG[timelineDensity];
+  const timelineWindow = useMemo(
+    () => buildTimelineWindow(visibleScreenings.length > 0 ? visibleScreenings : activeScreenings),
+    [activeScreenings, visibleScreenings]
   );
-  const timelineItems = layoutTimeline(activeScreenings);
+  const timelineCanvasHeight = Math.max(
+    densityConfig.minHeight,
+    (timelineWindow.totalMinutes / 60) * densityConfig.pixelsPerHour
+  );
+  const timelineItems = useMemo(() => layoutTimeline(visibleScreenings), [visibleScreenings]);
+  const visibleLaneCount = timelineItems[0]?.laneCount ?? 1;
+  const activeLaneCount = useMemo(
+    () => layoutTimeline(activeScreenings)[0]?.laneCount ?? 1,
+    [activeScreenings]
+  );
+
+  const dayCurrentItinerary = useMemo(
+    () =>
+      activeScreenings
+        .filter((screening) => currentItineraryIds.has(screening.id))
+        .sort((left, right) => left.startsAt.localeCompare(right.startsAt)),
+    [activeScreenings, currentItineraryIds]
+  );
+  const dayTransitionAnalysis = useMemo(
+    () => analyzeDayTransitions(dayCurrentItinerary, profile.bufferMinutes),
+    [dayCurrentItinerary, profile.bufferMinutes]
+  );
+  const focusedSelectionFeedback = useMemo(() => {
+    if (!focusedScreening) {
+      return null;
+    }
+    return buildFocusedSelectionFeedback(
+      analyzeFocusedSelection(focusedScreening, dayCurrentItinerary),
+      profile.bufferMinutes
+    );
+  }, [dayCurrentItinerary, focusedScreening, profile.bufferMinutes]);
+
   const dailyBudget = activeScreenings.reduce((sum, screening) => sum + screening.priceCny, 0);
-  const boostedCount = activeScreenings.filter(
-    (screening) => selections.screeningVotes[screening.id] === "boost"
-  ).length;
-  const blockedCount = activeScreenings.filter(
-    (screening) => selections.screeningVotes[screening.id] === "block"
-  ).length;
+  const visibleBudget = visibleScreenings.reduce((sum, screening) => sum + screening.priceCny, 0);
+  const boostedCount = filterCounts.boosted;
+  const blockedCount = filterCounts.blocked;
+  const earliestScreening = activeScreenings[0] ?? null;
+  const latestScreening = activeScreenings.reduce<Screening | null>(
+    (latest, screening) => {
+      if (!latest) {
+        return screening;
+      }
+      return screeningEnd(screening) > screeningEnd(latest) ? screening : latest;
+    },
+    null
+  );
+  const totalRuntimeMinutes = activeScreenings.reduce(
+    (sum, screening) => sum + screening.durationMinutes,
+    0
+  );
+  const riskyTransitions = dayTransitionAnalysis.transitions.filter(
+    (transition) => transition.status !== "ok"
+  );
+  const transitionSeverity =
+    dayTransitionAnalysis.conflictCount > 0
+      ? "error"
+      : dayTransitionAnalysis.tightCount > 0
+        ? "warning"
+        : "success";
+  const timelineCanvasWidth = Math.max(
+    720,
+    TIMELINE_GUTTER_WIDTH +
+      visibleLaneCount * densityConfig.laneWidth +
+      TIMELINE_TRAILING_PADDING
+  );
 
   return (
     <Card>
@@ -195,16 +553,13 @@ export function TimelineView({
               <Typography color="primary" variant="overline">
                 时间轴选片
               </Typography>
-              <Typography variant="h4">按天挑场次</Typography>
+              <Typography variant="h4">按天看节奏，再决定拿哪场</Typography>
               <Typography color="text.secondary" sx={{ mt: 1 }}>
-                直接在时间轴里点选场次，再用右侧详情卡把它加入当前片单，或者只作为推荐草案参考，不会再自动污染当前片单。
+                按时间重叠和间隔查看当天场次。
               </Typography>
             </Box>
             <Stack direction={{ xs: "row", md: "column" }} spacing={1}>
-              <Chip
-                color="primary"
-                label={`当前片单 ${currentItineraryIds.size} 场`}
-              />
+              <Chip color="primary" label={`当前片单 ${currentItineraryIds.size} 场`} />
               <Chip
                 color="success"
                 label={`推荐草案 ${recommendation?.selected.length ?? 0} 场`}
@@ -237,6 +592,59 @@ export function TimelineView({
             })}
           </Stack>
 
+          {activeScreenings.length > 0 ? (
+            <Stack spacing={1.5}>
+              <Stack
+                direction={{ xs: "column", xl: "row" }}
+                spacing={1.5}
+                sx={{ justifyContent: "space-between" }}
+              >
+                <Stack direction="row" spacing={1} sx={{ flexWrap: "wrap" }}>
+                  {FILTER_OPTIONS.map((filter) => (
+                    <Chip
+                      key={filter}
+                      clickable
+                      color={timelineFilter === filter ? "primary" : "default"}
+                      label={`${FILTER_LABELS[filter]} ${filterCounts[filter]}`}
+                      onClick={() => setTimelineFilter(filter)}
+                      variant={timelineFilter === filter ? "filled" : "outlined"}
+                    />
+                  ))}
+                </Stack>
+                <Stack direction="row" spacing={1} sx={{ flexWrap: "wrap" }}>
+                  {DENSITY_OPTIONS.map((density) => (
+                    <Chip
+                      key={density}
+                      clickable
+                      color={timelineDensity === density ? "secondary" : "default"}
+                      label={DENSITY_LABELS[density]}
+                      onClick={() => setTimelineDensity(density)}
+                      variant={timelineDensity === density ? "filled" : "outlined"}
+                    />
+                  ))}
+                </Stack>
+              </Stack>
+
+              <Stack direction={{ xs: "column", md: "row" }} spacing={1.25} sx={{ flexWrap: "wrap" }}>
+                <SummaryMetric
+                  label="首场"
+                  value={earliestScreening ? formatTimeLabel(earliestScreening.startsAt) : "暂无"}
+                />
+                <SummaryMetric
+                  label="末场"
+                  value={latestScreening ? formatTimeLabel(latestScreening.endsAt) : "暂无"}
+                />
+                <SummaryMetric label="片长合计" value={formatDuration(totalRuntimeMinutes)} />
+                <SummaryMetric label="并行轨道" value={`${activeLaneCount} 条`} />
+                <SummaryMetric
+                  label="当前片单节奏"
+                  tone={transitionSeverity}
+                  value={formatGapSummary(dayTransitionAnalysis.minGapMinutes)}
+                />
+              </Stack>
+            </Stack>
+          ) : null}
+
           {activeScreenings.length === 0 ? (
             <Alert severity="info" variant="outlined">
               {activeDate ? `${formatDateLabel(activeDate)} 暂无场次。` : "请选择一天开始。"}
@@ -248,7 +656,7 @@ export function TimelineView({
                 gap: 2,
                 gridTemplateColumns: {
                   xs: "1fr",
-                  xl: "minmax(0, 1.6fr) minmax(320px, 0.9fr)"
+                  xl: "minmax(0, 1.7fr) minmax(320px, 0.95fr)"
                 }
               }}
             >
@@ -268,168 +676,296 @@ export function TimelineView({
                       <Box>
                         <Typography variant="h6">{formatDateLabel(activeDate)}</Typography>
                         <Typography color="text.secondary" variant="body2">
-                          当天共 {activeScreenings.length} 场，全部铺在时间轴里可直接点选
+                          当天共 {activeScreenings.length} 场，当前视图 {visibleScreenings.length} 场，时间范围{" "}
+                          {formatHourMark(timelineWindow.startHour)} - {formatHourMark(timelineWindow.endHour)}
                         </Typography>
                       </Box>
                       <Stack direction="row" spacing={1} sx={{ flexWrap: "wrap" }}>
-                        <Chip label={`全日票房 ${formatCurrency(dailyBudget)}`} size="small" />
+                        <Chip label={`全日票价 ${formatCurrency(dailyBudget)}`} size="small" />
+                        <Chip
+                          label={`当前视图 ${formatCurrency(visibleBudget)}`}
+                          size="small"
+                          variant="outlined"
+                        />
                         <Chip
                           color="success"
-                          label={`在推荐草案 ${
-                            activeScreenings.filter((screening) =>
-                              recommendedIds.has(screening.id)
-                            ).length
-                          } 场`}
+                          label={`推荐草案 ${filterCounts.recommended} 场`}
                           size="small"
                           variant="outlined"
                         />
                         <Chip
                           color="primary"
-                          label={`在当前片单 ${
-                            activeScreenings.filter((screening) =>
-                              currentItineraryIds.has(screening.id)
-                            ).length
-                          } 场`}
+                          label={`当前片单 ${filterCounts.itinerary} 场`}
                           size="small"
                           variant="outlined"
                         />
                       </Stack>
                     </Stack>
 
-                    <Box sx={{ overflowX: "auto" }}>
-                      <Box
-                        sx={{
-                          backgroundColor: (theme) => alpha(theme.palette.primary.main, 0.04),
-                          border: (theme) => `1px solid ${theme.palette.divider}`,
-                          borderRadius: 4,
-                          minWidth: 560,
-                          position: "relative",
-                          px: 2,
-                          py: 1.5,
-                          height: 840
-                        }}
-                      >
-                        {HOURS.map((hour) => {
-                          const hourMinutes = Number(hour.slice(0, 2)) * 60 - 8 * 60;
-                          return (
-                            <Box
-                              key={hour}
-                              sx={{
-                                borderTop: (theme) =>
-                                  `1px dashed ${alpha(theme.palette.text.secondary, 0.18)}`,
-                                left: 0,
-                                position: "absolute",
-                                right: 0,
-                                top: `${(hourMinutes / 960) * 100}%`
-                              }}
-                            >
-                              <Typography
-                                color="text.secondary"
-                                sx={{ ml: 1, mt: -1.1 }}
-                                variant="caption"
-                              >
-                                {hour}
-                              </Typography>
-                            </Box>
-                          );
-                        })}
-
-                        {timelineItems.map(({ screening, laneIndex, laneCount }) => {
-                          const top = (minutesFromMorning(screening.startsAt) / 960) * 100;
-                          const height = Math.max(
-                            10,
-                            (screening.durationMinutes / 960) * 100
-                          );
-                          const width = 74 / laneCount;
-                          const left = 20 + laneIndex * width;
-                          const isFocused = screening.id === focusedScreeningId;
-                          const isRecommended = recommendedIds.has(screening.id);
-                          const isInCurrentItinerary = currentItineraryIds.has(screening.id);
-                          const screeningVote = selections.screeningVotes[screening.id];
-                          const filmVote = selections.filmVotes[screening.filmId];
-
-                          let accent = "#734E3C";
-                          if (isInCurrentItinerary) {
-                            accent = "#365C9A";
-                          } else if (screeningVote === "block" || filmVote === "avoid") {
-                            accent = "#C35454";
-                          } else if (screeningVote === "boost" || filmVote === "must") {
-                            accent = "#B33A3A";
-                          } else if (isRecommended) {
-                            accent = "#3D8C6F";
-                          }
-
-                          return (
-                            <Paper
+                    {dayCurrentItinerary.length > 0 ? (
+                      <Stack spacing={1}>
+                        <Stack
+                          direction={{ xs: "column", md: "row" }}
+                          spacing={1}
+                          sx={{ justifyContent: "space-between" }}
+                        >
+                          <Typography variant="subtitle2">当天当前片单</Typography>
+                          <Typography color="text.secondary" variant="caption">
+                            缓冲目标 {profile.bufferMinutes} 分钟
+                          </Typography>
+                        </Stack>
+                        <Stack direction="row" spacing={1} sx={{ flexWrap: "wrap" }}>
+                          {dayCurrentItinerary.map((screening) => (
+                            <Chip
                               key={screening.id}
-                              onClick={() => setFocusedScreeningId(screening.id)}
-                              sx={{
-                                background: `linear-gradient(180deg, ${alpha(
-                                  accent,
-                                  0.16
-                                )} 0%, ${alpha(accent, 0.22)} 100%)`,
-                                border: (theme) =>
-                                  `2px solid ${
-                                    isFocused
-                                      ? accent
-                                      : alpha(theme.palette.common.black, 0.08)
-                                  }`,
-                                borderRadius: 3,
-                                cursor: "pointer",
-                                display: "flex",
-                                flexDirection: "column",
-                                gap: 0.5,
-                                left: `${left}%`,
-                                minHeight: 92,
-                                overflow: "hidden",
-                                p: 1.25,
-                                position: "absolute",
-                                top: `${top}%`,
-                                width: `${Math.max(width - 1.2, 12)}%`,
-                                boxShadow: isFocused
-                                  ? `0 14px 30px ${alpha(accent, 0.26)}`
-                                  : "none"
+                              clickable
+                              color={screening.id === focusedScreeningId ? "primary" : "default"}
+                              label={`${formatTimeLabel(screening.startsAt)} ${screening.titleZh}`}
+                              onClick={() => {
+                                setTimelineFilter("all");
+                                setFocusedScreeningId(screening.id);
                               }}
-                            >
-                              <Typography sx={{ fontWeight: 700 }} variant="body2">
-                                {screening.titleZh}
-                              </Typography>
-                              <Typography color="text.secondary" variant="caption">
-                                {formatTimeLabel(screening.startsAt)} -{" "}
-                                {formatTimeLabel(screening.endsAt)}
-                              </Typography>
-                              <Typography color="text.secondary" variant="caption">
-                                {screening.venue}
-                              </Typography>
-                              <Typography color="text.secondary" variant="caption">
-                                {formatCurrency(screening.priceCny)}
-                              </Typography>
-                              {isInCurrentItinerary ? (
-                                <Chip
-                                  color="primary"
-                                  label="当前片单"
-                                  size="small"
-                                  sx={{ alignSelf: "flex-start", mt: 0.5 }}
-                                />
-                              ) : null}
-                              {isRecommended ? (
-                                <Chip
-                                  color="success"
-                                  label="推荐草案"
-                                  size="small"
-                                  sx={{ alignSelf: "flex-start", mt: 0.5 }}
-                                />
-                              ) : null}
-                            </Paper>
-                          );
-                        })}
+                              variant={screening.id === focusedScreeningId ? "filled" : "outlined"}
+                            />
+                          ))}
+                        </Stack>
+                        <Alert severity={transitionSeverity} variant="outlined">
+                          {dayCurrentItinerary.length === 1
+                            ? "当天当前片单里只有 1 场，还没有时间衔接压力。"
+                            : dayTransitionAnalysis.conflictCount > 0
+                              ? `当前片单里有 ${dayTransitionAnalysis.conflictCount} 处时间重叠，建议先处理。`
+                              : dayTransitionAnalysis.tightCount > 0
+                                ? `当前片单里有 ${dayTransitionAnalysis.tightCount} 处缓冲少于 ${profile.bufferMinutes} 分钟。`
+                                : "当天当前片单的衔接都满足缓冲要求。"}
+                        </Alert>
+                        {riskyTransitions.length > 0 ? (
+                          <Stack direction="row" spacing={1} sx={{ flexWrap: "wrap" }}>
+                            {riskyTransitions.map((transition) => (
+                              <Paper
+                                key={`${transition.from.id}-${transition.to.id}`}
+                                onClick={() => {
+                                  setTimelineFilter("all");
+                                  setFocusedScreeningId(transition.to.id);
+                                }}
+                                sx={{
+                                  border: (theme) =>
+                                    `1px solid ${
+                                      transition.status === "conflict"
+                                        ? alpha(theme.palette.error.main, 0.3)
+                                        : alpha(theme.palette.warning.main, 0.3)
+                                    }`,
+                                  cursor: "pointer",
+                                  p: 1.25
+                                }}
+                                variant="outlined"
+                              >
+                                <Stack spacing={0.5}>
+                                  <Chip
+                                    color={transition.status === "conflict" ? "error" : "warning"}
+                                    label={
+                                      transition.status === "conflict"
+                                        ? `重叠 ${Math.abs(transition.gapMinutes)} 分`
+                                        : `缓冲 ${transition.gapMinutes} 分`
+                                    }
+                                    size="small"
+                                    sx={{ alignSelf: "flex-start" }}
+                                  />
+                                  <Typography variant="caption">
+                                    {describeTransition(transition, profile.bufferMinutes)}
+                                  </Typography>
+                                </Stack>
+                              </Paper>
+                            ))}
+                          </Stack>
+                        ) : null}
+                      </Stack>
+                    ) : (
+                      <Alert severity="info" variant="outlined">
+                        当天还没有加入当前片单的场次。可以先从时间轴里挑一场当锚点。
+                      </Alert>
+                    )}
+
+                    {visibleScreenings.length === 0 ? (
+                      <Alert severity="info" variant="outlined">
+                        当前筛选条件下没有场次。切回“全部场次”或换一天，会更容易继续排。
+                      </Alert>
+                    ) : (
+                      <Box sx={{ overflowX: "auto" }}>
+                        <Box
+                          sx={{
+                            backgroundColor: (theme) => alpha(theme.palette.primary.main, 0.04),
+                            border: (theme) => `1px solid ${theme.palette.divider}`,
+                            borderRadius: "12px",
+                            position: "relative",
+                            width: timelineCanvasWidth,
+                            px: 2,
+                            py: 1.5,
+                            height: timelineCanvasHeight
+                          }}
+                        >
+                          {timelineWindow.hourMarks.map((hour) => {
+                            const hourMinutes =
+                              (Number(hour.slice(0, 2)) - timelineWindow.startHour) * 60;
+                            return (
+                              <Box
+                                key={hour}
+                                sx={{
+                                  borderTop: (theme) =>
+                                    `1px dashed ${alpha(theme.palette.text.secondary, 0.18)}`,
+                                  left: 0,
+                                  position: "absolute",
+                                  right: 0,
+                                  top: `${(hourMinutes / timelineWindow.totalMinutes) * 100}%`
+                                }}
+                              >
+                                <Typography
+                                  color="text.secondary"
+                                  sx={{ ml: 1.5, mt: -1.1 }}
+                                  variant="caption"
+                                >
+                                  {hour}
+                                </Typography>
+                              </Box>
+                            );
+                          })}
+
+                          {timelineItems.map(({ screening, laneIndex }) => {
+                            const top =
+                              (minutesFromTimelineStart(
+                                screening.startsAt,
+                                timelineWindow.startHour
+                              ) /
+                                timelineWindow.totalMinutes) *
+                              timelineCanvasHeight;
+                            const actualHeight =
+                              (Math.max(screening.durationMinutes, 0) /
+                                timelineWindow.totalMinutes) *
+                              timelineCanvasHeight;
+                            const cardHeight = Math.max(
+                              TIMELINE_CARD_MIN_HEIGHT,
+                              actualHeight
+                            );
+                            const isCompactCard = cardHeight < 78;
+                            const isTinyCard = cardHeight < 52;
+                            const width = densityConfig.laneWidth - TIMELINE_CARD_GAP;
+                            const left =
+                              TIMELINE_GUTTER_WIDTH + laneIndex * densityConfig.laneWidth;
+                            const isFocused = screening.id === focusedScreeningId;
+                            const isRecommended = recommendedIds.has(screening.id);
+                            const isInCurrentItinerary = currentItineraryIds.has(screening.id);
+                            const screeningVote = selections.screeningVotes[screening.id];
+                            const filmVote = selections.filmVotes[screening.filmId];
+
+                            let accent = "#734E3C";
+                            let statusLabel: string | null = null;
+                            let statusColor:
+                              | "default"
+                              | "primary"
+                              | "success"
+                              | "warning"
+                              | "error" = "default";
+
+                            if (isInCurrentItinerary) {
+                              accent = "#365C9A";
+                              statusLabel = "当前片单";
+                              statusColor = "primary";
+                            } else if (screeningVote === "block" || filmVote === "avoid") {
+                              accent = "#C35454";
+                              statusLabel = "已屏蔽";
+                              statusColor = "error";
+                            } else if (screeningVote === "boost" || filmVote === "must") {
+                              accent = "#B33A3A";
+                              statusLabel = "已优先";
+                              statusColor = "warning";
+                            } else if (isRecommended) {
+                              accent = "#3D8C6F";
+                              statusLabel = "推荐草案";
+                              statusColor = "success";
+                            }
+
+                            return (
+                              <Paper
+                                key={screening.id}
+                                onClick={() => setFocusedScreeningId(screening.id)}
+                                sx={{
+                                  background: `linear-gradient(180deg, ${alpha(
+                                    accent,
+                                    0.16
+                                  )} 0%, ${alpha(accent, 0.22)} 100%)`,
+                                  border: (theme) =>
+                                    `2px solid ${
+                                      isFocused
+                                        ? accent
+                                        : alpha(theme.palette.common.black, 0.08)
+                                    }`,
+                                  borderRadius: "8px",
+                                  cursor: "pointer",
+                                  display: "flex",
+                                  flexDirection: "column",
+                                  gap: 0.5,
+                                  left,
+                                  height: cardHeight,
+                                  overflow: "hidden",
+                                  p: isTinyCard ? 0.75 : isCompactCard ? 1 : 1.25,
+                                  position: "absolute",
+                                  top,
+                                  width,
+                                  boxShadow: isFocused
+                                    ? `0 14px 30px ${alpha(accent, 0.26)}`
+                                    : "none"
+                                }}
+                              >
+                                <Typography
+                                  sx={{
+                                    display: "-webkit-box",
+                                    fontWeight: 700,
+                                    overflow: "hidden",
+                                    WebkitBoxOrient: "vertical",
+                                    WebkitLineClamp: isTinyCard
+                                      ? 1
+                                      : timelineDensity === "compact"
+                                        ? 2
+                                        : 3
+                                  }}
+                                  variant="body2"
+                                >
+                                  {screening.titleZh}
+                                </Typography>
+                                <Typography color="text.secondary" variant="caption">
+                                  {formatTimeLabel(screening.startsAt)} -{" "}
+                                  {formatTimeLabel(screening.endsAt)}
+                                </Typography>
+                                {!isTinyCard ? (
+                                  <Typography color="text.secondary" variant="caption">
+                                    {screening.venue}
+                                    {screening.hall ? ` · ${screening.hall}` : ""}
+                                  </Typography>
+                                ) : null}
+                                {!isCompactCard && timelineDensity !== "compact" ? (
+                                  <Typography color="text.secondary" variant="caption">
+                                    {formatCurrency(screening.priceCny)} ·{" "}
+                                    {formatDuration(screening.durationMinutes)}
+                                  </Typography>
+                                ) : null}
+                                {statusLabel && !isTinyCard ? (
+                                  <Chip
+                                    color={statusColor}
+                                    label={statusLabel}
+                                    size="small"
+                                    sx={{ alignSelf: "flex-start", mt: 0.5 }}
+                                  />
+                                ) : null}
+                              </Paper>
+                            );
+                          })}
+                        </Box>
                       </Box>
-                    </Box>
+                    )}
                   </Stack>
                 </CardContent>
               </Card>
 
-              <Card>
+              <Card sx={{ alignSelf: "start", position: { xl: "sticky" }, top: { xl: 24 } }}>
                 <CardContent sx={{ p: 2.5 }}>
                   {focusedScreening ? (
                     <Stack spacing={2}>
@@ -445,11 +981,7 @@ export function TimelineView({
 
                       <Stack direction="row" spacing={1} sx={{ flexWrap: "wrap" }}>
                         <Chip label={focusedScreening.unit} size="small" variant="outlined" />
-                        <Chip
-                          label={String(focusedScreening.year)}
-                          size="small"
-                          variant="outlined"
-                        />
+                        <Chip label={String(focusedScreening.year)} size="small" variant="outlined" />
                         <Chip
                           label={formatDuration(focusedScreening.durationMinutes)}
                           size="small"
@@ -477,16 +1009,26 @@ export function TimelineView({
                               focusedScreening.hall || "影厅待定"
                             }`}
                           />
-                          <DetailRow
-                            label="票价"
-                            value={formatCurrency(focusedScreening.priceCny)}
-                          />
+                          <DetailRow label="票价" value={formatCurrency(focusedScreening.priceCny)} />
                           <DetailRow
                             label="活动"
                             value={focusedScreening.activityInfo || "常规放映"}
                           />
                         </Stack>
                       </Paper>
+
+                      {focusedSelectionFeedback ? (
+                        <Alert severity={focusedSelectionFeedback.severity} variant="outlined">
+                          <Stack spacing={0.75}>
+                            <Typography variant="body2">{focusedSelectionFeedback.title}</Typography>
+                            {focusedSelectionFeedback.lines.map((line) => (
+                              <Typography key={line} variant="body2">
+                                - {line}
+                              </Typography>
+                            ))}
+                          </Stack>
+                        </Alert>
+                      ) : null}
 
                       <Stack spacing={1}>
                         <Typography variant="subtitle1">时间轴选片动作</Typography>
@@ -589,7 +1131,10 @@ export function TimelineView({
                             (screening) => (
                               <Paper
                                 key={screening.id}
-                                onClick={() => setFocusedScreeningId(screening.id)}
+                                onClick={() => {
+                                  setTimelineFilter("all");
+                                  setFocusedScreeningId(screening.id);
+                                }}
                                 sx={{
                                   cursor: "pointer",
                                   p: 1.25
@@ -615,7 +1160,9 @@ export function TimelineView({
                     </Stack>
                   ) : (
                     <Alert severity="info" variant="outlined">
-                      从左边时间轴点一场片子，这里会出现详细信息和操作按钮。
+                      {visibleScreenings.length === 0
+                        ? "当前筛选下没有场次可聚焦，先放宽筛选或换一天。"
+                        : "从左边时间轴点一场片子，这里会出现详细信息和操作按钮。"}
                     </Alert>
                   )}
                 </CardContent>
@@ -638,5 +1185,43 @@ function DetailRow({ label, value }: { label: string; value: string }) {
         {value}
       </Typography>
     </Stack>
+  );
+}
+
+function SummaryMetric({
+  label,
+  value,
+  tone = "default"
+}: {
+  label: string;
+  value: string;
+  tone?: "default" | "success" | "warning" | "error";
+}) {
+  const accentMap = {
+    default: "#734E3C",
+    success: "#3D8C6F",
+    warning: "#B46B17",
+    error: "#C35454"
+  } as const;
+
+  return (
+    <Paper
+      sx={{
+        border: `1px solid ${alpha(accentMap[tone], 0.18)}`,
+        flex: "1 1 140px",
+        minWidth: 0,
+        p: 1.25
+      }}
+      variant="outlined"
+    >
+      <Stack spacing={0.4}>
+        <Typography color="text.secondary" variant="caption">
+          {label}
+        </Typography>
+        <Typography sx={{ fontWeight: 700 }} variant="body2">
+          {value}
+        </Typography>
+      </Stack>
+    </Paper>
   );
 }

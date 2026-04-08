@@ -45,6 +45,21 @@ export interface Screening {
   activityInfo: string;
 }
 
+export interface DoubanSubject {
+  id: string;
+  title: string;
+  year: string;
+  url: string;
+  coverUrl: string;
+  ratingValue: number;
+  ratingCount: number;
+  summary: string;
+  credits: string;
+  labels: string[];
+  matchScore: number;
+  query: string;
+}
+
 export interface PreferenceProfile {
   activeDates: string[];
   totalBudgetCny: number;

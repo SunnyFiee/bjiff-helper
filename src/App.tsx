@@ -16,6 +16,7 @@ import {
   Chip,
   CircularProgress,
   Drawer,
+  GlobalStyles,
   IconButton,
   List,
   ListItemButton,
@@ -25,17 +26,22 @@ import {
   Stack,
   TextField,
   Toolbar,
+  Tooltip,
   Typography,
   useMediaQuery
 } from "@mui/material";
-import { alpha, useTheme } from "@mui/material/styles";
+import { alpha, useTheme, type Theme } from "@mui/material/styles";
 import AutoAwesomeRounded from "@mui/icons-material/AutoAwesomeRounded";
 import ChecklistRounded from "@mui/icons-material/ChecklistRounded";
+import CloseFullscreenRounded from "@mui/icons-material/CloseFullscreenRounded";
+import CloseRounded from "@mui/icons-material/CloseRounded";
 import DashboardRounded from "@mui/icons-material/DashboardRounded";
 import DeleteOutlineRounded from "@mui/icons-material/DeleteOutlineRounded";
 import DeleteSweepRounded from "@mui/icons-material/DeleteSweepRounded";
 import MenuRounded from "@mui/icons-material/MenuRounded";
 import MovieRounded from "@mui/icons-material/MovieRounded";
+import MinimizeRounded from "@mui/icons-material/MinimizeRounded";
+import OpenInFullRounded from "@mui/icons-material/OpenInFullRounded";
 import RestartAltRounded from "@mui/icons-material/RestartAltRounded";
 import StorageRounded from "@mui/icons-material/StorageRounded";
 import TuneRounded from "@mui/icons-material/TuneRounded";
@@ -47,15 +53,26 @@ import { PreferencePanel } from "./components/PreferencePanel";
 import { StatCard } from "./components/StatCard";
 import { TimelineView } from "./components/TimelineView";
 import {
+  buildDoubanSearchUrl,
+  buildFilmDoubanKey,
+  parseDoubanSubjectInput
+} from "./lib/douban";
+import {
+  closeDesktopWindow,
   clearSavedItineraries,
   deleteSavedItinerary,
   exportItineraryFromDesktop,
+  getDesktopWindowMaximizedState,
   importSchedule,
   listSavedItinerariesFromDesktop,
+  minimizeDesktopWindow,
+  openExternalUrlFromDesktop,
   pickImportFileFromDesktop,
   resetDatasetToBundled,
   saveItineraryToDesktop,
-  savePreferencesToDesktop
+  savePreferencesToDesktop,
+  startDraggingDesktopWindow,
+  toggleMaximizeDesktopWindow
 } from "./lib/desktop-api";
 import { loadFestivalDataset } from "./lib/data-source";
 import { exportItineraryCsv, exportItineraryIcs } from "./lib/exporters";
@@ -64,6 +81,7 @@ import { loadPersistedState, savePersistedState } from "./lib/persistence";
 import { generateRecommendations } from "./lib/recommendation";
 import { isTauriRuntime } from "./lib/tauri-runtime";
 import type {
+  DoubanSubject,
   FestivalDataset,
   Film,
   PreferenceProfile,
@@ -270,6 +288,9 @@ export default function App() {
     "save" | "csv" | "ics" | null
   >(null);
   const [currentItineraryIds, setCurrentItineraryIds] = useState<string[]>([]);
+  const [doubanMatches, setDoubanMatches] = useState<
+    Record<string, DoubanSubject | undefined>
+  >({});
   const [draftRecommendation, setDraftRecommendation] =
     useState<RecommendationResult | null>(null);
   const [savedItineraries, setSavedItineraries] = useState<SavedItinerarySummary[]>([]);
@@ -277,6 +298,7 @@ export default function App() {
   const [deletingItineraryId, setDeletingItineraryId] = useState<string | null>(null);
   const [isClearingItineraries, setIsClearingItineraries] = useState(false);
   const [mobileDrawerOpen, setMobileDrawerOpen] = useState(false);
+  const [isDesktopWindowMaximized, setIsDesktopWindowMaximized] = useState(false);
 
   const deferredQuery = useDeferredValue(filters.query.trim().toLowerCase());
   const desktopMode = isTauriRuntime();
@@ -303,6 +325,7 @@ export default function App() {
             setProfile(persisted.profile);
             setSelections(persisted.selections);
             setCurrentItineraryIds(persisted.currentItineraryIds ?? []);
+            setDoubanMatches(persisted.doubanMatches ?? {});
           }
           setIsHydrated(true);
         });
@@ -336,6 +359,69 @@ export default function App() {
 
     return () => {
       cancelled = true;
+    };
+  }, [desktopMode]);
+
+  useEffect(() => {
+    if (!desktopMode) {
+      setIsDesktopWindowMaximized(false);
+      return;
+    }
+
+    let cancelled = false;
+    getDesktopWindowMaximizedState()
+      .then((isMaximized) => {
+        if (!cancelled) {
+          setIsDesktopWindowMaximized(isMaximized);
+        }
+      })
+      .catch((error) => {
+        if (!cancelled) {
+          console.warn("Failed to read desktop window state", error);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [desktopMode]);
+
+  useEffect(() => {
+    if (!desktopMode) {
+      return;
+    }
+
+    let cancelled = false;
+    let timeoutId: number | null = null;
+
+    const syncWindowState = () => {
+      getDesktopWindowMaximizedState()
+        .then((isMaximized) => {
+          if (!cancelled) {
+            setIsDesktopWindowMaximized(isMaximized);
+          }
+        })
+        .catch((error) => {
+          if (!cancelled) {
+            console.warn("Failed to sync desktop window state", error);
+          }
+        });
+    };
+
+    const handleResize = () => {
+      if (timeoutId !== null) {
+        window.clearTimeout(timeoutId);
+      }
+      timeoutId = window.setTimeout(syncWindowState, 120);
+    };
+
+    window.addEventListener("resize", handleResize);
+    return () => {
+      cancelled = true;
+      if (timeoutId !== null) {
+        window.clearTimeout(timeoutId);
+      }
+      window.removeEventListener("resize", handleResize);
     };
   }, [desktopMode]);
 
@@ -377,7 +463,8 @@ export default function App() {
           profile,
           selections,
           activeSection,
-          currentItineraryIds
+          currentItineraryIds,
+          doubanMatches
         });
         if (desktopMode) {
           await savePreferencesToDesktop(profile);
@@ -400,7 +487,15 @@ export default function App() {
       cancelled = true;
       window.clearTimeout(timeoutId);
     };
-  }, [activeSection, currentItineraryIds, desktopMode, isHydrated, profile, selections]);
+  }, [
+    activeSection,
+    currentItineraryIds,
+    desktopMode,
+    doubanMatches,
+    isHydrated,
+    profile,
+    selections
+  ]);
 
   useEffect(() => {
     if (desktopSidebar) {
@@ -488,6 +583,10 @@ export default function App() {
   const markedFilmCount = Object.values(selections.filmVotes).filter(Boolean).length;
   const markedScreeningCount = Object.values(selections.screeningVotes).filter(Boolean)
     .length;
+  const linkedDoubanCount = dataset.films.reduce((count, film) => {
+    const filmKey = buildFilmDoubanKey(film);
+    return count + (doubanMatches[filmKey] ? 1 : 0);
+  }, 0);
 
   async function refreshSavedItineraries() {
     if (!desktopMode) {
@@ -603,6 +702,113 @@ export default function App() {
         [screeningId]: vote
       }
     }));
+  }
+
+  function handleClearDoubanMatch(filmKey: string) {
+    setDoubanMatches((current) => {
+      const next = { ...current };
+      delete next[filmKey];
+      return next;
+    });
+    setSyncMessage("已清除这部影片的豆瓣匹配。");
+  }
+
+  function handleManualDoubanBind(film: Film, input: string) {
+    const parsed = parseDoubanSubjectInput(input, film);
+    if (!parsed) {
+      setSyncMessage("手动绑定失败：请输入豆瓣条目 URL，或直接输入数字 subject id。");
+      return false;
+    }
+
+    const filmKey = buildFilmDoubanKey(film);
+    setDoubanMatches((current) => ({
+      ...current,
+      [filmKey]: parsed
+    }));
+    setSyncMessage(`已手动绑定《${film.titleZh}》的豆瓣条目。`);
+    return true;
+  }
+
+  async function openDoubanUrl(url: string, successMessage: string) {
+    if (!desktopMode) {
+      window.open(url, "_blank", "noopener,noreferrer");
+      setSyncMessage(successMessage);
+      return;
+    }
+
+    try {
+      await openExternalUrlFromDesktop(url);
+      setSyncMessage(successMessage);
+    } catch (error) {
+      setSyncMessage(
+        error instanceof Error ? `打开豆瓣失败：${error.message}` : "打开豆瓣失败"
+      );
+    }
+  }
+
+  async function handleSearchDouban(film: Film) {
+    await openDoubanUrl(buildDoubanSearchUrl(film), "已打开豆瓣搜索页。");
+  }
+
+  async function handleOpenDoubanSubject(match: DoubanSubject) {
+    await openDoubanUrl(match.url, `已打开《${match.title}》的豆瓣条目。`);
+  }
+
+  async function handleMinimizeWindow() {
+    if (!desktopMode) {
+      return;
+    }
+
+    try {
+      await minimizeDesktopWindow();
+    } catch (error) {
+      setSyncMessage(
+        error instanceof Error ? `最小化窗口失败：${error.message}` : "最小化窗口失败"
+      );
+    }
+  }
+
+  async function handleStartDraggingWindow() {
+    if (!desktopMode) {
+      return;
+    }
+
+    try {
+      await startDraggingDesktopWindow();
+    } catch (error) {
+      setSyncMessage(
+        error instanceof Error ? `拖动窗口失败：${error.message}` : "拖动窗口失败"
+      );
+    }
+  }
+
+  async function handleToggleMaximizeWindow() {
+    if (!desktopMode) {
+      return;
+    }
+
+    try {
+      const nextMaximized = await toggleMaximizeDesktopWindow();
+      setIsDesktopWindowMaximized(nextMaximized);
+    } catch (error) {
+      setSyncMessage(
+        error instanceof Error ? `切换窗口大小失败：${error.message}` : "切换窗口大小失败"
+      );
+    }
+  }
+
+  async function handleCloseWindow() {
+    if (!desktopMode) {
+      return;
+    }
+
+    try {
+      await closeDesktopWindow();
+    } catch (error) {
+      setSyncMessage(
+        error instanceof Error ? `关闭窗口失败：${error.message}` : "关闭窗口失败"
+      );
+    }
   }
 
   async function handleImportSchedule() {
@@ -830,9 +1036,6 @@ export default function App() {
                 <Typography variant="h6">BJIFF 排片助手</Typography>
               </Box>
             </Stack>
-            <Typography color="text.secondary" variant="body2">
-              桌面端左侧现在专门承接功能区，导航、导入和高频操作都会固定在这里。
-            </Typography>
             <Stack direction="row" spacing={1} sx={{ flexWrap: "wrap" }}>
               <Chip
                 color="primary"
@@ -890,6 +1093,10 @@ export default function App() {
               <MiniMetric
                 label="手动标记"
                 value={`${markedFilmCount} 部影片 / ${markedScreeningCount} 场`}
+              />
+              <MiniMetric
+                label="豆瓣匹配"
+                value={`${linkedDoubanCount} 部影片`}
               />
             </Stack>
           </CardContent>
@@ -971,55 +1178,154 @@ export default function App() {
   );
 
   return (
-    <Box sx={{ display: "flex", minHeight: "100vh" }}>
-      <AppBar
-        color="inherit"
-        position="fixed"
-        sx={{
-          borderBottom: "1px solid",
-          borderColor: "divider",
-          ml: { md: `${DRAWER_WIDTH}px` },
-          width: { md: `calc(100% - ${DRAWER_WIDTH}px)` }
+    <>
+      <GlobalStyles
+        styles={{
+          html: {
+            backgroundColor: theme.palette.background.default
+          },
+          "#root": {
+            background:
+              "radial-gradient(circle at top left, rgba(179, 58, 58, 0.12), transparent 24rem), linear-gradient(180deg, #F6F1E9 0%, #EFE7DB 48%, #F9F5EF 100%)",
+            minHeight: "100vh",
+            position: "relative",
+            width: "100%"
+          }
         }}
-      >
-        <Toolbar sx={{ gap: 2, minHeight: 72 }}>
-          <IconButton
-            onClick={() => setMobileDrawerOpen(true)}
-            sx={{ display: { md: "none" } }}
-          >
-            <MenuRounded />
-          </IconButton>
+      />
 
-          <Box sx={{ flexGrow: 1, minWidth: 0 }}>
-            <Typography color="text.secondary" variant="body2">
-              {activeMeta.label}
-            </Typography>
-            <Typography noWrap variant="h6">
-              {activeMeta.title}
-            </Typography>
-          </Box>
+      <Box sx={{ display: "flex", minHeight: "100vh", position: "relative" }}>
+        <AppBar
+          color="inherit"
+          position="fixed"
+          sx={{
+            borderBottom: "1px solid",
+            borderColor: "divider",
+            ml: { md: `${DRAWER_WIDTH}px` },
+            width: { md: `calc(100% - ${DRAWER_WIDTH}px)` }
+          }}
+        >
+          <Toolbar sx={{ gap: 2, minHeight: 72, px: { xs: 1.5, md: 2.5 } }}>
+            <IconButton
+              onClick={() => setMobileDrawerOpen(true)}
+              sx={{ display: { md: "none" } }}
+            >
+              <MenuRounded />
+            </IconButton>
 
-          <Stack
-            direction="row"
-            spacing={1}
-            sx={{ display: { xs: "none", sm: "flex" }, flexWrap: "wrap" }}
-          >
-            <Chip
-              label={desktopMode ? "桌面端" : "预演模式"}
-              size="small"
-              variant="outlined"
-            />
-            <Chip
-              color="primary"
-              label={`当前片单 ${currentItineraryScreenings.length} 场`}
-              size="small"
-              variant="outlined"
-            />
-          </Stack>
-        </Toolbar>
-      </AppBar>
+            <Box
+              data-tauri-drag-region=""
+              onMouseDown={(event) => {
+                if (event.button !== 0 || !desktopMode) {
+                  return;
+                }
+                void handleStartDraggingWindow();
+              }}
+              onDoubleClick={
+                desktopMode
+                  ? () => {
+                      void handleToggleMaximizeWindow();
+                    }
+                  : undefined
+              }
+              sx={{
+                alignItems: "center",
+                cursor: desktopMode ? "grab" : "default",
+                display: "flex",
+                flexGrow: 1,
+                gap: 1.5,
+                minWidth: 0,
+                pr: 1,
+                userSelect: "none",
+                WebkitUserSelect: "none"
+              }}
+            >
+              <Box sx={{ flexGrow: 1, minWidth: 0, pointerEvents: "none" }}>
+                <Typography color="text.secondary" variant="body2">
+                  {activeMeta.label}
+                </Typography>
+                <Typography noWrap variant="h6">
+                  {activeMeta.title}
+                </Typography>
+              </Box>
 
-      <Box component="nav" sx={{ flexShrink: { md: 0 }, width: { md: DRAWER_WIDTH } }}>
+              <Stack
+                direction="row"
+                spacing={1}
+                sx={{
+                  display: { xs: "none", sm: "flex" },
+                  flexWrap: "wrap",
+                  pointerEvents: "none"
+                }}
+              >
+                <Chip
+                  label={desktopMode ? "桌面端" : "预演模式"}
+                  size="small"
+                  variant="outlined"
+                />
+                <Chip
+                  color="primary"
+                  label={`当前片单 ${currentItineraryScreenings.length} 场`}
+                  size="small"
+                  variant="outlined"
+                />
+              </Stack>
+            </Box>
+
+            {desktopMode ? (
+              <Paper
+                sx={{
+                  alignItems: "center",
+                  backdropFilter: "blur(14px)",
+                  backgroundColor: alpha(theme.palette.background.paper, 0.72),
+                  borderRadius: 999,
+                  boxShadow: "none",
+                  display: "flex",
+                  gap: 0.25,
+                  p: 0.5
+                }}
+                variant="outlined"
+              >
+                <Tooltip title="最小化">
+                  <IconButton
+                    aria-label="最小化窗口"
+                    onClick={handleMinimizeWindow}
+                    size="small"
+                    sx={windowControlButtonSx(theme)}
+                  >
+                    <MinimizeRounded fontSize="small" />
+                  </IconButton>
+                </Tooltip>
+                <Tooltip title={isDesktopWindowMaximized ? "还原窗口" : "放大窗口"}>
+                  <IconButton
+                    aria-label={isDesktopWindowMaximized ? "还原窗口" : "放大窗口"}
+                    onClick={handleToggleMaximizeWindow}
+                    size="small"
+                    sx={windowControlButtonSx(theme)}
+                  >
+                    {isDesktopWindowMaximized ? (
+                      <CloseFullscreenRounded fontSize="small" />
+                    ) : (
+                      <OpenInFullRounded fontSize="small" />
+                    )}
+                  </IconButton>
+                </Tooltip>
+                <Tooltip title="关闭">
+                  <IconButton
+                    aria-label="关闭窗口"
+                    onClick={handleCloseWindow}
+                    size="small"
+                    sx={windowControlButtonSx(theme, true)}
+                  >
+                    <CloseRounded fontSize="small" />
+                  </IconButton>
+                </Tooltip>
+              </Paper>
+            ) : null}
+          </Toolbar>
+        </AppBar>
+
+        <Box component="nav" sx={{ flexShrink: { md: 0 }, width: { md: DRAWER_WIDTH } }}>
         <Drawer
           ModalProps={{ keepMounted: true }}
           onClose={() => setMobileDrawerOpen(false)}
@@ -1061,9 +1367,9 @@ export default function App() {
         >
           {drawerContent}
         </Drawer>
-      </Box>
+        </Box>
 
-      <Box component="main" sx={{ flexGrow: 1, minWidth: 0 }}>
+        <Box component="main" sx={{ flexGrow: 1, minWidth: 0 }}>
         <Toolbar sx={{ minHeight: 72 }} />
         <Box sx={{ display: "flex", flexDirection: "column", gap: 3, p: { xs: 2, md: 3 } }}>
           <Paper
@@ -1114,6 +1420,10 @@ export default function App() {
                 <Chip
                   color="secondary"
                   label={`当前片单预算 ${formatCurrency(currentItineraryTotal)}`}
+                  variant="outlined"
+                />
+                <Chip
+                  label={`豆瓣已接入 ${linkedDoubanCount} 部`}
                   variant="outlined"
                 />
               </Stack>
@@ -1405,9 +1715,15 @@ export default function App() {
               screeningVotes={selections.screeningVotes}
               markedFilmCount={markedFilmCount}
               markedScreeningCount={markedScreeningCount}
+              doubanMatches={doubanMatches}
+              isDesktop={desktopMode}
               onClearFilters={handleClearFilters}
               onFiltersChange={setFilters}
+              onSearchDouban={handleSearchDouban}
+              onOpenDoubanSubject={handleOpenDoubanSubject}
+              onClearDoubanMatch={handleClearDoubanMatch}
               onFilmVote={setFilmVote}
+              onManualBindDouban={handleManualDoubanBind}
               onScreeningVote={setScreeningVote}
             />
           ) : null}
@@ -1443,8 +1759,24 @@ export default function App() {
           ) : null}
         </Box>
       </Box>
-    </Box>
+      </Box>
+    </>
   );
+}
+
+function windowControlButtonSx(theme: Theme, isClose = false) {
+  return {
+    borderRadius: 2.5,
+    color: isClose ? theme.palette.error.main : theme.palette.text.secondary,
+    height: 34,
+    width: 34,
+    "&:hover": {
+      backgroundColor: isClose
+        ? alpha(theme.palette.error.main, 0.12)
+        : alpha(theme.palette.primary.main, 0.08),
+      color: isClose ? theme.palette.error.dark : theme.palette.text.primary
+    }
+  };
 }
 
 function MiniMetric({ label, value }: { label: string; value: string }) {
