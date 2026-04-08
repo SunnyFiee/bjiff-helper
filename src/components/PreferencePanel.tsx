@@ -91,21 +91,26 @@ export function PreferencePanel({
           <Stack
             direction={{ xs: "column", md: "row" }}
             spacing={2}
-            sx={{ justifyContent: "space-between" }}
+            sx={{ alignItems: { md: "flex-start" }, justifyContent: "space-between" }}
           >
-            <Box>
+            <Box sx={{ maxWidth: 720 }}>
               <Typography color="primary" variant="overline">
                 排片策略
               </Typography>
-              <Typography variant="h4">偏好与约束</Typography>
+              <Typography variant="h5">偏好与约束</Typography>
               <Typography color="text.secondary" sx={{ mt: 1 }} variant="body1">
-                这里决定推荐引擎怎么选片。预算、时间、缓冲和偏好都会直接影响最终片单。
+                预算、时间、缓冲和偏好都会直接影响推荐结果。
               </Typography>
             </Box>
             <Stack
-              direction={{ xs: "row", md: "column" }}
+              direction="row"
               spacing={1}
-              sx={{ minWidth: { md: 180 } }}
+              sx={{
+                flexWrap: "wrap",
+                justifyContent: { md: "flex-end" },
+                minWidth: { md: 220 },
+                rowGap: 1
+              }}
             >
               <Chip
                 color="primary"
@@ -119,10 +124,15 @@ export function PreferencePanel({
           </Stack>
 
           <Stack direction={{ xs: "column", sm: "row" }} spacing={1.5}>
-            <Button onClick={onResetProfile} variant="outlined">
+            <Button onClick={onResetProfile} sx={{ minWidth: 160 }} variant="outlined">
               恢复默认偏好
             </Button>
-            <Button color="secondary" onClick={onClearSelections} variant="outlined">
+            <Button
+              color="secondary"
+              onClick={onClearSelections}
+              sx={{ minWidth: 160 }}
+              variant="outlined"
+            >
               清空手动标记
             </Button>
           </Stack>

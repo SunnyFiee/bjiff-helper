@@ -100,6 +100,7 @@ type SectionKey =
   | "itinerary";
 
 const DRAWER_WIDTH = 320;
+const CONTENT_MAX_WIDTH = 1440;
 const EMPTY_FILTERS: ScreeningFilters = {
   query: "",
   date: "all",
@@ -119,35 +120,35 @@ const SECTION_ITEMS: Array<{
     key: "overview",
     label: "总览",
     title: "数据与推荐总览",
-    description: "先看导入状态、推荐摘要和历史片单，快速判断当前策略是不是在正确方向上。",
+    description: "先看导入状态、推荐摘要和历史片单。",
     icon: DashboardRounded
   },
   {
     key: "preferences",
     label: "偏好与约束",
     title: "排片规则控制台",
-    description: "预算、片长、日期、影院和人工标记都会在这里汇总，适合集中调参数。",
+    description: "集中调整预算、时间、影院和人工标记。",
     icon: TuneRounded
   },
   {
     key: "screenings",
     label: "场次浏览",
     title: "影片与场次筛选",
-    description: "把单元、影院、时间和票价一起筛掉，留下真正值得比较的候选池。",
+    description: "按单元、影院、时间和票价快速筛选。",
     icon: MovieRounded
   },
   {
     key: "timeline",
     label: "时间轴",
     title: "按天检查排片密度",
-    description: "用更直观的时间轴看赶场间隔和候补空间，避免片单只在分数上好看。",
+    description: "直接看冲突、空档和赶场压力。",
     icon: ViewTimelineRounded
   },
   {
     key: "itinerary",
     label: "我的片单",
     title: "保存与导出片单",
-    description: "确认最终结果，保存到本地历史，继续导出成 CSV 或 ICS。",
+    description: "确认、保存并导出当前片单。",
     icon: ChecklistRounded
   }
 ];
@@ -1005,46 +1006,75 @@ export default function App() {
         sx={{
           display: "flex",
           flexDirection: "column",
-          gap: 2,
+          gap: 2.25,
           pb: 3,
-          px: 2.5,
-          pt: 2
+          px: 2.25,
+          pt: 2.25
         }}
       >
         <Paper
           sx={{
             background:
-              "linear-gradient(180deg, rgba(179, 58, 58, 0.12) 0%, rgba(216, 107, 88, 0.1) 100%)",
+              "linear-gradient(180deg, rgba(179,58,58,0.08) 0%, rgba(255,255,255,0.9) 100%)",
             p: 2.25
           }}
+          variant="outlined"
         >
-          <Stack spacing={1.5}>
-            <Stack direction="row" spacing={1.5}>
+          <Stack spacing={2}>
+            <Stack
+              direction="row"
+              spacing={1.5}
+              sx={{ alignItems: "center", minWidth: 0 }}
+            >
               <Avatar
                 sx={{
-                  bgcolor: "primary.main",
-                  color: "primary.contrastText",
-                  fontWeight: 700
+                  bgcolor: alpha(theme.palette.primary.main, 0.1),
+                  color: "primary.main",
+                  fontSize: 22,
+                  fontWeight: 800,
+                  height: 48,
+                  width: 48
                 }}
               >
                 B
               </Avatar>
-              <Box>
+              <Box sx={{ minWidth: 0 }}>
                 <Typography color="primary" variant="overline">
                   BJIFF Scheduler
                 </Typography>
-                <Typography variant="h6">BJIFF 排片助手</Typography>
+                <Typography noWrap variant="h6">
+                  BJIFF 排片助手
+                </Typography>
+                <Typography color="text.secondary" variant="body2">
+                  导入、筛选、排时间轴
+                </Typography>
               </Box>
             </Stack>
-            <Stack direction="row" spacing={1} sx={{ flexWrap: "wrap" }}>
+            <Box
+              sx={{
+                display: "grid",
+                gap: 1,
+                gridTemplateColumns: "repeat(2, minmax(0, 1fr))"
+              }}
+            >
+              <SidebarStatusTile
+                label="当前片单"
+                value={`${currentItineraryScreenings.length} 场`}
+              />
+              <SidebarStatusTile
+                label="豆瓣接入"
+                value={`${linkedDoubanCount} 部`}
+              />
+            </Box>
+            <Stack direction="row" spacing={1} sx={{ flexWrap: "wrap", rowGap: 1 }}>
               <Chip
                 color="primary"
-                label={desktopMode ? "Tauri 桌面模式" : "浏览器预演模式"}
+                label={desktopMode ? "桌面端" : "预演模式"}
                 size="small"
                 variant="outlined"
               />
               <Chip
-                label={`推荐草案 ${previewRecommendation.selected.length} 场`}
+                label={`草案 ${previewRecommendation.selected.length} 场`}
                 size="small"
                 variant="outlined"
               />
@@ -1053,8 +1083,8 @@ export default function App() {
         </Paper>
 
         <Card>
-          <CardContent sx={{ p: 1.5 }}>
-            <Typography sx={{ mb: 1 }} variant="subtitle1">
+          <CardContent sx={{ p: 2 }}>
+            <Typography sx={{ mb: 1.25 }} variant="subtitle2">
               功能区
             </Typography>
             <List disablePadding>
@@ -1065,12 +1095,45 @@ export default function App() {
                     key={item.key}
                     onClick={() => handleSectionChange(item.key)}
                     selected={activeSection === item.key}
-                    sx={{ borderRadius: 3, mb: 0.5 }}
+                    sx={{
+                      alignItems: "center",
+                      borderRadius: 3,
+                      mb: 0.75,
+                      minHeight: 48,
+                      px: 1.25,
+                      py: 0.75,
+                      transition: "background-color 140ms ease, transform 140ms ease",
+                      "& .MuiListItemText-primary": {
+                        fontWeight: activeSection === item.key ? 700 : 600
+                      },
+                      "& .MuiListItemIcon-root": {
+                        alignItems: "center",
+                        backgroundColor:
+                          activeSection === item.key
+                            ? alpha(theme.palette.primary.main, 0.12)
+                            : alpha(theme.palette.common.black, 0.03),
+                        borderRadius: 2.25,
+                        display: "flex",
+                        height: 34,
+                        justifyContent: "center",
+                        minWidth: 34,
+                        width: 34
+                      },
+                      "&.Mui-selected": {
+                        backgroundColor: alpha(theme.palette.primary.main, 0.08)
+                      },
+                      "&.Mui-selected:hover": {
+                        backgroundColor: alpha(theme.palette.primary.main, 0.12)
+                      },
+                      "&:hover": {
+                        transform: "translateX(1px)"
+                      }
+                    }}
                   >
-                    <ListItemIcon sx={{ color: "inherit", minWidth: 40 }}>
+                    <ListItemIcon sx={{ color: "inherit", minWidth: 44 }}>
                       <Icon fontSize="small" />
                     </ListItemIcon>
-                    <ListItemText primary={item.label} secondary={item.title} />
+                    <ListItemText primary={item.label} />
                   </ListItemButton>
                 );
               })}
@@ -1079,35 +1142,52 @@ export default function App() {
         </Card>
 
         <Card>
-          <CardContent sx={{ p: 2 }}>
+          <CardContent sx={{ p: 2.25 }}>
             <Stack spacing={1.5}>
-              <Typography variant="subtitle1">快速状态</Typography>
-              <MiniMetric
-                label="当前数据源"
-                value={dataset.sourceFile}
-              />
-              <MiniMetric
-                label="默认缓冲"
-                value={`${profile.bufferMinutes} 分钟`}
-              />
-              <MiniMetric
-                label="手动标记"
-                value={`${markedFilmCount} 部影片 / ${markedScreeningCount} 场`}
-              />
-              <MiniMetric
-                label="豆瓣匹配"
-                value={`${linkedDoubanCount} 部影片`}
-              />
+              <Typography variant="subtitle2">快速状态</Typography>
+              <Box
+                sx={{
+                  display: "grid",
+                  gap: 1,
+                  gridTemplateColumns: "repeat(2, minmax(0, 1fr))"
+                }}
+              >
+                <SidebarStatusTile label="缓冲" value={`${profile.bufferMinutes} 分钟`} />
+                <SidebarStatusTile
+                  label="标记"
+                  value={`${markedFilmCount}/${markedScreeningCount}`}
+                />
+                <SidebarStatusTile label="豆瓣" value={`${linkedDoubanCount} 部`} />
+                <SidebarStatusTile label="日期" value={`${profile.activeDates.length} 天`} />
+              </Box>
+              <Paper sx={{ p: 1.25 }} variant="outlined">
+                <Typography color="text.secondary" variant="caption">
+                  当前数据源
+                </Typography>
+                <Typography
+                  sx={{
+                    display: "-webkit-box",
+                    fontWeight: 600,
+                    overflow: "hidden",
+                    WebkitBoxOrient: "vertical",
+                    WebkitLineClamp: 2,
+                    wordBreak: "break-all"
+                  }}
+                  variant="body2"
+                >
+                  {dataset.sourceFile}
+                </Typography>
+              </Paper>
             </Stack>
           </CardContent>
         </Card>
 
         <Card>
-          <CardContent sx={{ p: 2 }}>
-            <Stack spacing={2}>
+          <CardContent sx={{ p: 2.25 }}>
+            <Stack spacing={1.75}>
               <Stack direction="row" spacing={1} sx={{ alignItems: "center" }}>
                 <StorageRounded color="primary" fontSize="small" />
-                <Typography variant="subtitle1">导入与数据源</Typography>
+                <Typography variant="subtitle2">导入与数据源</Typography>
               </Stack>
               <TextField
                 label="Excel 路径"
@@ -1116,58 +1196,82 @@ export default function App() {
                 size="small"
                 value={importPath}
               />
-              <Stack direction={{ xs: "column", sm: "row", md: "column" }} spacing={1}>
+              <Stack spacing={1}>
                 <Button
+                  disabled={isImporting || isResettingDataset}
+                  fullWidth
                   onClick={handlePickImportFile}
                   startIcon={<UploadFileRounded />}
                   variant="outlined"
-                  disabled={isImporting || isResettingDataset}
                 >
                   选择文件
                 </Button>
                 <Button
+                  disabled={isImporting || isResettingDataset}
+                  fullWidth
                   onClick={handleImportSchedule}
                   startIcon={<UploadFileRounded />}
                   variant="contained"
-                  disabled={isImporting || isResettingDataset}
                 >
                   {isImporting ? "导入中…" : "导入 Excel"}
                 </Button>
                 <Button
                   color="secondary"
+                  disabled={isImporting || isResettingDataset}
+                  fullWidth
                   onClick={handleResetDataset}
                   startIcon={<RestartAltRounded />}
                   variant="outlined"
-                  disabled={isImporting || isResettingDataset}
                 >
                   {isResettingDataset ? "恢复中…" : "恢复样本"}
                 </Button>
               </Stack>
-              <Alert severity={importMessage ? "success" : "info"} variant="outlined">
-                {importMessage ||
-                  (desktopMode
-                    ? `当前数据：${dataset.sourceFile} · 更新时间 ${dataset.importedAt}`
-                    : "浏览器模式仅查看内置样本数据。")}
-              </Alert>
+              <Paper sx={{ p: 1.25 }} variant="outlined">
+                <Typography color="text.secondary" variant="caption">
+                  当前状态
+                </Typography>
+                <Typography variant="body2">
+                  {importMessage ||
+                    (desktopMode
+                      ? `当前数据：${dataset.sourceFile} · 更新时间 ${dataset.importedAt}`
+                      : "浏览器模式仅查看内置样本数据。")}
+                </Typography>
+              </Paper>
             </Stack>
           </CardContent>
         </Card>
 
-        <Alert severity="info" variant="outlined">
-          {syncMessage || "状态等待同步"}
-        </Alert>
+        <Paper sx={{ p: 1.5 }} variant="outlined">
+          <Typography color="text.secondary" variant="caption">
+            同步状态
+          </Typography>
+          <Typography sx={{ mt: 0.5 }} variant="body2">
+            {syncMessage || "状态等待同步"}
+          </Typography>
+        </Paper>
 
         <Card>
-          <CardContent sx={{ p: 2 }}>
+          <CardContent sx={{ p: 2.25 }}>
             <Stack spacing={1.5}>
               <Stack direction="row" spacing={1} sx={{ alignItems: "center" }}>
                 <AutoAwesomeRounded color="primary" fontSize="small" />
-                <Typography variant="subtitle1">高频操作</Typography>
+                <Typography variant="subtitle2">高频操作</Typography>
               </Stack>
-              <Button onClick={handleResetProfile} variant="outlined">
+              <Button
+                fullWidth
+                onClick={handleResetProfile}
+                sx={{ justifyContent: "flex-start" }}
+                variant="outlined"
+              >
                 恢复默认偏好
               </Button>
-              <Button color="secondary" onClick={handleClearSelections} variant="outlined">
+              <Button
+                color="secondary"
+                fullWidth
+                onClick={handleClearSelections}
+                sx={{ justifyContent: "flex-start" }}
+                variant="outlined"
+              >
                 清空手动标记
               </Button>
             </Stack>
@@ -1186,7 +1290,7 @@ export default function App() {
           },
           "#root": {
             background:
-              "radial-gradient(circle at top left, rgba(179, 58, 58, 0.12), transparent 24rem), linear-gradient(180deg, #F6F1E9 0%, #EFE7DB 48%, #F9F5EF 100%)",
+              "linear-gradient(180deg, #F6F0E8 0%, #F1E9DE 100%)",
             minHeight: "100vh",
             position: "relative",
             width: "100%"
@@ -1205,123 +1309,135 @@ export default function App() {
             width: { md: `calc(100% - ${DRAWER_WIDTH}px)` }
           }}
         >
-          <Toolbar sx={{ gap: 2, minHeight: 72, px: { xs: 1.5, md: 2.5 } }}>
-            <IconButton
-              onClick={() => setMobileDrawerOpen(true)}
-              sx={{ display: { md: "none" } }}
-            >
-              <MenuRounded />
-            </IconButton>
-
+          <Toolbar sx={{ minHeight: 72, px: { xs: 1.5, md: 2.5 } }}>
             <Box
-              data-tauri-drag-region=""
-              onMouseDown={(event) => {
-                if (event.button !== 0 || !desktopMode) {
-                  return;
-                }
-                void handleStartDraggingWindow();
-              }}
-              onDoubleClick={
-                desktopMode
-                  ? () => {
-                      void handleToggleMaximizeWindow();
-                    }
-                  : undefined
-              }
               sx={{
                 alignItems: "center",
-                cursor: desktopMode ? "grab" : "default",
                 display: "flex",
-                flexGrow: 1,
-                gap: 1.5,
-                minWidth: 0,
-                pr: 1,
-                userSelect: "none",
-                WebkitUserSelect: "none"
+                gap: 2,
+                marginInline: "auto",
+                maxWidth: CONTENT_MAX_WIDTH,
+                width: "100%"
               }}
             >
-              <Box sx={{ flexGrow: 1, minWidth: 0, pointerEvents: "none" }}>
-                <Typography color="text.secondary" variant="body2">
-                  {activeMeta.label}
-                </Typography>
-                <Typography noWrap variant="h6">
-                  {activeMeta.title}
-                </Typography>
-              </Box>
-
-              <Stack
-                direction="row"
-                spacing={1}
-                sx={{
-                  display: { xs: "none", sm: "flex" },
-                  flexWrap: "wrap",
-                  pointerEvents: "none"
-                }}
+              <IconButton
+                onClick={() => setMobileDrawerOpen(true)}
+                sx={{ display: { md: "none" } }}
               >
-                <Chip
-                  label={desktopMode ? "桌面端" : "预演模式"}
-                  size="small"
-                  variant="outlined"
-                />
-                <Chip
-                  color="primary"
-                  label={`当前片单 ${currentItineraryScreenings.length} 场`}
-                  size="small"
-                  variant="outlined"
-                />
-              </Stack>
-            </Box>
+                <MenuRounded />
+              </IconButton>
 
-            {desktopMode ? (
-              <Paper
+              <Box
+                data-tauri-drag-region=""
+                onMouseDown={(event) => {
+                  if (event.button !== 0 || !desktopMode) {
+                    return;
+                  }
+                  void handleStartDraggingWindow();
+                }}
+                onDoubleClick={
+                  desktopMode
+                    ? () => {
+                        void handleToggleMaximizeWindow();
+                      }
+                    : undefined
+                }
                 sx={{
                   alignItems: "center",
-                  backdropFilter: "blur(14px)",
-                  backgroundColor: alpha(theme.palette.background.paper, 0.72),
-                  borderRadius: 999,
-                  boxShadow: "none",
+                  cursor: desktopMode ? "grab" : "default",
                   display: "flex",
-                  gap: 0.25,
-                  p: 0.5
+                  flexGrow: 1,
+                  gap: 1.5,
+                  minWidth: 0,
+                  pr: 1,
+                  userSelect: "none",
+                  WebkitUserSelect: "none"
                 }}
-                variant="outlined"
               >
-                <Tooltip title="最小化">
-                  <IconButton
-                    aria-label="最小化窗口"
-                    onClick={handleMinimizeWindow}
+                <Box sx={{ flexGrow: 1, minWidth: 0, pointerEvents: "none" }}>
+                  <Typography color="text.secondary" variant="body2">
+                    {activeMeta.label}
+                  </Typography>
+                  <Typography noWrap variant="h6">
+                    {activeMeta.title}
+                  </Typography>
+                </Box>
+
+                <Stack
+                  direction="row"
+                  spacing={1}
+                  sx={{
+                    display: { xs: "none", sm: "flex" },
+                    flexWrap: "wrap",
+                    pointerEvents: "none",
+                    rowGap: 1
+                  }}
+                >
+                  <Chip
+                    label={desktopMode ? "桌面端" : "预演模式"}
                     size="small"
-                    sx={windowControlButtonSx(theme)}
-                  >
-                    <MinimizeRounded fontSize="small" />
-                  </IconButton>
-                </Tooltip>
-                <Tooltip title={isDesktopWindowMaximized ? "还原窗口" : "放大窗口"}>
-                  <IconButton
-                    aria-label={isDesktopWindowMaximized ? "还原窗口" : "放大窗口"}
-                    onClick={handleToggleMaximizeWindow}
+                    variant="outlined"
+                  />
+                  <Chip
+                    color="primary"
+                    label={`当前片单 ${currentItineraryScreenings.length} 场`}
                     size="small"
-                    sx={windowControlButtonSx(theme)}
-                  >
-                    {isDesktopWindowMaximized ? (
-                      <CloseFullscreenRounded fontSize="small" />
-                    ) : (
-                      <OpenInFullRounded fontSize="small" />
-                    )}
-                  </IconButton>
-                </Tooltip>
-                <Tooltip title="关闭">
-                  <IconButton
-                    aria-label="关闭窗口"
-                    onClick={handleCloseWindow}
-                    size="small"
-                    sx={windowControlButtonSx(theme, true)}
-                  >
-                    <CloseRounded fontSize="small" />
-                  </IconButton>
-                </Tooltip>
-              </Paper>
-            ) : null}
+                    variant="outlined"
+                  />
+                </Stack>
+              </Box>
+
+              {desktopMode ? (
+                <Paper
+                  sx={{
+                    alignItems: "center",
+                    backdropFilter: "blur(14px)",
+                    backgroundColor: alpha(theme.palette.background.paper, 0.78),
+                    borderRadius: 999,
+                    boxShadow: "none",
+                    display: "flex",
+                    gap: 0.25,
+                    p: 0.5
+                  }}
+                  variant="outlined"
+                >
+                  <Tooltip title="最小化">
+                    <IconButton
+                      aria-label="最小化窗口"
+                      onClick={handleMinimizeWindow}
+                      size="small"
+                      sx={windowControlButtonSx(theme)}
+                    >
+                      <MinimizeRounded fontSize="small" />
+                    </IconButton>
+                  </Tooltip>
+                  <Tooltip title={isDesktopWindowMaximized ? "还原窗口" : "放大窗口"}>
+                    <IconButton
+                      aria-label={isDesktopWindowMaximized ? "还原窗口" : "放大窗口"}
+                      onClick={handleToggleMaximizeWindow}
+                      size="small"
+                      sx={windowControlButtonSx(theme)}
+                    >
+                      {isDesktopWindowMaximized ? (
+                        <CloseFullscreenRounded fontSize="small" />
+                      ) : (
+                        <OpenInFullRounded fontSize="small" />
+                      )}
+                    </IconButton>
+                  </Tooltip>
+                  <Tooltip title="关闭">
+                    <IconButton
+                      aria-label="关闭窗口"
+                      onClick={handleCloseWindow}
+                      size="small"
+                      sx={windowControlButtonSx(theme, true)}
+                    >
+                      <CloseRounded fontSize="small" />
+                    </IconButton>
+                  </Tooltip>
+                </Paper>
+              ) : null}
+            </Box>
           </Toolbar>
         </AppBar>
 
@@ -1371,63 +1487,82 @@ export default function App() {
 
         <Box component="main" sx={{ flexGrow: 1, minWidth: 0 }}>
         <Toolbar sx={{ minHeight: 72 }} />
-        <Box sx={{ display: "flex", flexDirection: "column", gap: 3, p: { xs: 2, md: 3 } }}>
+        <Box
+          sx={{
+            display: "flex",
+            flexDirection: "column",
+            gap: 2.5,
+            marginInline: "auto",
+            maxWidth: CONTENT_MAX_WIDTH,
+            p: { xs: 2, md: 3 },
+            width: "100%"
+          }}
+        >
           <Paper
             sx={{
-              background: `linear-gradient(135deg, ${alpha(
+              background: `linear-gradient(180deg, ${alpha(
                 theme.palette.primary.main,
-                0.14
-              )} 0%, ${alpha(theme.palette.secondary.main, 0.18)} 100%)`,
-              overflow: "hidden",
-              p: { xs: 3, md: 4 },
-              position: "relative"
+                0.06
+              )} 0%, ${alpha(theme.palette.common.white, 0.82)} 100%)`,
+              border: `1px solid ${alpha(theme.palette.primary.main, 0.08)}`,
+              p: { xs: 2.75, md: 3.25 }
             }}
+            variant="outlined"
           >
             <Box
               sx={{
-                background: alpha(theme.palette.common.white, 0.38),
-                borderRadius: "50%",
-                height: 240,
-                position: "absolute",
-                right: -100,
-                top: -100,
-                width: 240
+                alignItems: "stretch",
+                display: "grid",
+                gap: { xs: 2.25, lg: 3 },
+                gridTemplateColumns: {
+                  xs: "1fr",
+                  lg: "minmax(0, 1.35fr) minmax(320px, 0.95fr)"
+                }
               }}
-            />
-            <Stack spacing={2} sx={{ maxWidth: 860, position: "relative" }}>
-              <Typography color="primary" variant="overline">
-                {activeMeta.label}
-              </Typography>
-              <Typography variant="h3">{activeMeta.title}</Typography>
-              <Typography color="text.secondary" variant="body1">
-                {activeMeta.description}
-              </Typography>
-              <Stack direction="row" spacing={1} sx={{ flexWrap: "wrap" }}>
-                <Chip
-                  label={`${dataset.summary.screeningCount} 场放映`}
-                  variant="outlined"
-                />
-                <Chip
-                  label={`${dataset.summary.filmCount} 部影片`}
-                  variant="outlined"
-                />
-                <Chip
-                  label={`票价 ${formatCurrency(dataset.summary.priceRange[0])} - ${formatCurrency(
-                    dataset.summary.priceRange[1]
-                  )}`}
-                  variant="outlined"
-                />
-                <Chip
-                  color="secondary"
-                  label={`当前片单预算 ${formatCurrency(currentItineraryTotal)}`}
-                  variant="outlined"
-                />
-                <Chip
-                  label={`豆瓣已接入 ${linkedDoubanCount} 部`}
-                  variant="outlined"
-                />
+            >
+              <Stack spacing={1.75} sx={{ justifyContent: "center", maxWidth: 760 }}>
+                <Typography color="primary" variant="overline">
+                  {activeMeta.label}
+                </Typography>
+                <Typography variant="h4">{activeMeta.title}</Typography>
+                <Typography color="text.secondary" variant="body1">
+                  {activeMeta.description}
+                </Typography>
+                <Stack direction="row" spacing={1} sx={{ flexWrap: "wrap", rowGap: 1 }}>
+                  <Chip
+                    label={`${dataset.summary.screeningCount} 场放映`}
+                    variant="outlined"
+                  />
+                  <Chip
+                    label={`${dataset.summary.filmCount} 部影片`}
+                    variant="outlined"
+                  />
+                  <Chip
+                    label={`票价 ${formatCurrency(dataset.summary.priceRange[0])} - ${formatCurrency(
+                      dataset.summary.priceRange[1]
+                    )}`}
+                    variant="outlined"
+                  />
+                </Stack>
               </Stack>
-            </Stack>
+
+              <Box
+                sx={{
+                  display: "grid",
+                  gap: 1,
+                  gridTemplateColumns: {
+                    xs: "repeat(2, minmax(0, 1fr))",
+                    sm: "repeat(4, minmax(0, 1fr))",
+                    lg: "repeat(2, minmax(0, 1fr))"
+                  }
+                }}
+              >
+                <HeroStat label="当前片单" value={`${currentItineraryScreenings.length} 场`} />
+                <HeroStat label="片单预算" value={formatCurrency(currentItineraryTotal)} />
+                <HeroStat label="推荐草案" value={`${previewRecommendation.selected.length} 场`} />
+                <HeroStat label="豆瓣接入" value={`${linkedDoubanCount} 部`} />
+              </Box>
+            </Box>
           </Paper>
 
           {activeSection === "overview" ? (
@@ -1435,7 +1570,7 @@ export default function App() {
               <Box
                 sx={{
                   display: "grid",
-                  gap: 2,
+                  gap: 2.25,
                   gridTemplateColumns: {
                     xs: "1fr",
                     sm: "repeat(3, minmax(0, 1fr))"
@@ -1462,7 +1597,7 @@ export default function App() {
               <Box
                 sx={{
                   display: "grid",
-                  gap: 2,
+                  gap: 2.25,
                   gridTemplateColumns: {
                     xs: "1fr",
                     xl: "repeat(12, minmax(0, 1fr))"
@@ -1504,7 +1639,7 @@ export default function App() {
                                   bgcolor: "primary.main",
                                   borderRadius: 999,
                                   height: "100%",
-                                  width: `${Math.max(ratio * 420, 6)}%`
+                                  width: `${Math.max(ratio * 100, 6)}%`
                                 }}
                               />
                             </Box>
@@ -1779,14 +1914,29 @@ function windowControlButtonSx(theme: Theme, isClose = false) {
   };
 }
 
-function MiniMetric({ label, value }: { label: string; value: string }) {
+function SidebarStatusTile({ label, value }: { label: string; value: string }) {
   return (
-    <Box>
-      <Typography color="text.secondary" variant="body2">
+    <Paper
+      sx={{
+        alignItems: "flex-start",
+        backgroundColor: alpha("#FFFFFF", 0.76),
+        borderRadius: 3,
+        display: "flex",
+        flexDirection: "column",
+        justifyContent: "center",
+        minWidth: 0,
+        px: 1.25,
+        py: 1.15
+      }}
+      variant="outlined"
+    >
+      <Typography color="text.secondary" variant="caption">
         {label}
       </Typography>
       <Typography
         sx={{
+          lineHeight: 1.2,
+          fontWeight: 700,
           overflow: "hidden",
           textOverflow: "ellipsis",
           whiteSpace: "nowrap"
@@ -1795,17 +1945,67 @@ function MiniMetric({ label, value }: { label: string; value: string }) {
       >
         {value}
       </Typography>
-    </Box>
+    </Paper>
+  );
+}
+
+function HeroStat({ label, value }: { label: string; value: string }) {
+  return (
+    <Paper
+      sx={{
+        alignItems: "flex-start",
+        backgroundColor: alpha("#FFFFFF", 0.74),
+        borderRadius: 4,
+        display: "flex",
+        flexDirection: "column",
+        justifyContent: "center",
+        minHeight: 92,
+        minWidth: 0,
+        p: 1.5
+      }}
+      variant="outlined"
+    >
+      <Typography color="text.secondary" variant="caption">
+        {label}
+      </Typography>
+      <Typography
+        sx={{
+          fontSize: { xs: 20, lg: 24 },
+          fontWeight: 800,
+          lineHeight: 1.1,
+          mt: 0.55,
+          overflow: "hidden",
+          textOverflow: "ellipsis",
+          whiteSpace: "nowrap"
+        }}
+      >
+        {value}
+      </Typography>
+    </Paper>
   );
 }
 
 function SplitRow({ label, value }: { label: string; value: string }) {
   return (
-    <Stack direction="row" spacing={2} sx={{ justifyContent: "space-between" }}>
-      <Typography color="text.secondary" sx={{ minWidth: 0 }} variant="body2">
+    <Stack
+      direction="row"
+      spacing={2}
+      sx={{ alignItems: "center", justifyContent: "space-between" }}
+    >
+      <Typography
+        color="text.secondary"
+        sx={{
+          flex: 1,
+          minWidth: 0,
+          overflow: "hidden",
+          textOverflow: "ellipsis",
+          whiteSpace: "nowrap"
+        }}
+        variant="body2"
+      >
         {label}
       </Typography>
-      <Typography sx={{ fontWeight: 700 }} variant="body2">
+      <Typography sx={{ flexShrink: 0, fontWeight: 700 }} variant="body2">
         {value}
       </Typography>
     </Stack>
@@ -1814,7 +2014,7 @@ function SplitRow({ label, value }: { label: string; value: string }) {
 
 function InsightMetric({ hint, value }: { hint: string; value: string }) {
   return (
-    <Paper sx={{ p: 1.5 }} variant="outlined">
+    <Paper sx={{ minHeight: 92, p: 1.5 }} variant="outlined">
       <Typography variant="h6">{value}</Typography>
       <Typography color="text.secondary" variant="body2">
         {hint}

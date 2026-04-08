@@ -90,21 +90,26 @@ export function FilmExplorer({
           <Stack
             direction={{ xs: "column", lg: "row" }}
             spacing={2}
-            sx={{ justifyContent: "space-between" }}
+            sx={{ alignItems: { lg: "flex-start" }, justifyContent: "space-between" }}
           >
-            <Box>
+            <Box sx={{ maxWidth: 760 }}>
               <Typography color="primary" variant="overline">
                 选片
               </Typography>
-              <Typography variant="h4">场次浏览</Typography>
+              <Typography variant="h5">场次浏览</Typography>
               <Typography color="text.secondary" sx={{ mt: 1 }}>
-                用筛选快速收窄范围，再通过“必看 / 不考虑 / 优先这场 / 屏蔽”给推荐器更明确的信号。
+                先用筛选缩小范围，再给推荐器明确标记。
               </Typography>
             </Box>
             <Stack
-              direction={{ xs: "row", md: "column" }}
+              direction="row"
               spacing={1}
-              sx={{ minWidth: { lg: 200 } }}
+              sx={{
+                flexWrap: "wrap",
+                justifyContent: { lg: "flex-end" },
+                minWidth: { lg: 220 },
+                rowGap: 1
+              }}
             >
               <Chip
                 color="primary"
@@ -118,16 +123,15 @@ export function FilmExplorer({
             </Stack>
           </Stack>
 
-          <Stack
-            direction={{ xs: "column", md: "row" }}
-            spacing={2}
+          <Box
             sx={{
               display: "grid",
               gap: 2,
               gridTemplateColumns: {
                 xs: "1fr",
                 md: "minmax(0, 2fr) repeat(4, minmax(0, 1fr))"
-              }
+              },
+              alignItems: "center"
             }}
           >
             <TextField
@@ -211,7 +215,7 @@ export function FilmExplorer({
             <Button onClick={onClearFilters} variant="outlined">
               清空筛选
             </Button>
-          </Stack>
+          </Box>
 
           {cards.length === 0 ? (
             <Alert severity="warning" variant="outlined">
@@ -241,25 +245,19 @@ export function FilmExplorer({
               const selectedDoubanMatch = doubanMatches[filmKey];
 
               return (
-                <Card
-                  key={film.id}
-                  sx={{
-                    background:
-                      "linear-gradient(180deg, rgba(255,255,255,0.92) 0%, rgba(255,250,245,0.96) 100%)"
-                  }}
-                >
+                <Card key={film.id}>
                   <CardContent sx={{ p: 2.5 }}>
                     <Stack spacing={2}>
                       <Stack
                         direction={{ xs: "column", md: "row" }}
                         spacing={2}
-                        sx={{ justifyContent: "space-between" }}
+                        sx={{ alignItems: { md: "flex-start" }, justifyContent: "space-between" }}
                       >
-                        <Box>
+                        <Box sx={{ minWidth: 0 }}>
                           <Stack
                             direction="row"
                             spacing={1}
-                            sx={{ flexWrap: "wrap", mb: 1 }}
+                            sx={{ flexWrap: "wrap", mb: 1, rowGap: 1 }}
                           >
                             <Chip label={film.unit} size="small" variant="outlined" />
                             <Chip label={String(film.year)} size="small" variant="outlined" />
@@ -274,7 +272,7 @@ export function FilmExplorer({
                             {film.titleEn || "暂无英文片名"}
                           </Typography>
                         </Box>
-                        <Stack direction="row" spacing={1}>
+                        <Stack direction="row" spacing={1} sx={{ flexWrap: "wrap", rowGap: 1 }}>
                           <Button
                             color="primary"
                             onClick={() =>
@@ -333,17 +331,15 @@ export function FilmExplorer({
                           <Stack
                             direction={{ xs: "column", sm: "row" }}
                             spacing={1}
-                            sx={{ justifyContent: "space-between" }}
+                            sx={{ alignItems: { sm: "center" }, justifyContent: "space-between" }}
                           >
-                            <Box>
+                            <Box sx={{ minWidth: 0 }}>
                               <Typography variant="subtitle2">豆瓣条目</Typography>
                               <Typography color="text.secondary" variant="body2">
-                                {selectedDoubanMatch
-                                  ? "已匹配豆瓣条目。"
-                                  : "按片名搜索豆瓣条目。"}
+                                {selectedDoubanMatch ? "已锁定条目。" : "按片名打开豆瓣搜索。"}
                               </Typography>
                             </Box>
-                            <Stack direction="row" spacing={1}>
+                            <Stack direction="row" spacing={1} sx={{ flexWrap: "wrap", rowGap: 1 }}>
                               <Button
                                 onClick={() => onSearchDouban(film)}
                                 size="small"
@@ -384,7 +380,7 @@ export function FilmExplorer({
                             />
                           ) : (
                             <Typography color="text.secondary" variant="body2">
-                              还没有锁定豆瓣条目。建议先打开豆瓣搜索页，确认影片后把条目链接粘到下面完成绑定。
+                              还没有锁定豆瓣条目，打开搜索后可手动粘贴链接完成绑定。
                             </Typography>
                           )}
 
@@ -461,9 +457,9 @@ export function FilmExplorer({
                                 <Stack
                                   direction={{ xs: "column", md: "row" }}
                                   spacing={1}
-                                  sx={{ justifyContent: "space-between" }}
+                                  sx={{ alignItems: { md: "flex-start" }, justifyContent: "space-between" }}
                                 >
-                                  <Box>
+                                  <Box sx={{ minWidth: 0 }}>
                                     <Typography sx={{ fontWeight: 700 }} variant="body1">
                                       {formatDateTimeLabel(screening.startsAt)}
                                     </Typography>

@@ -16,8 +16,8 @@ export const appTheme = createTheme({
       contrastText: "#2C1E08"
     },
     background: {
-      default: "#F4EFE8",
-      paper: "#FFFDF9"
+      default: "#F4EFE7",
+      paper: "#FFFCF8"
     },
     text: {
       primary: "#1F1A17",
@@ -29,10 +29,10 @@ export const appTheme = createTheme({
     error: {
       main: "#C35454"
     },
-    divider: alpha("#734E3C", 0.12)
+    divider: alpha("#734E3C", 0.1)
   },
   shape: {
-    borderRadius: 20
+    borderRadius: 16
   },
   typography: {
     fontFamily:
@@ -67,7 +67,7 @@ export const appTheme = createTheme({
         body: {
           minHeight: "100%",
           background:
-            "radial-gradient(circle at top left, rgba(179, 58, 58, 0.12), transparent 24rem), linear-gradient(180deg, #F6F1E9 0%, #EFE7DB 48%, #F9F5EF 100%)"
+            "linear-gradient(180deg, #F6F0E8 0%, #F1E9DE 100%)"
         },
         "#root": {
           minHeight: "100vh"
@@ -77,8 +77,8 @@ export const appTheme = createTheme({
     MuiAppBar: {
       styleOverrides: {
         root: {
-          backgroundColor: alpha("#FFFDF9", 0.78),
-          backdropFilter: "blur(18px)",
+          backgroundColor: alpha("#FFFCF8", 0.9),
+          backdropFilter: "blur(14px)",
           boxShadow: "none"
         }
       }
@@ -89,22 +89,34 @@ export const appTheme = createTheme({
       },
       styleOverrides: {
         root: {
+          backgroundColor: alpha("#FFFFFF", 0.9),
           border: `1px solid ${alpha("#734E3C", 0.12)}`,
-          boxShadow: "0 22px 42px rgba(73, 48, 33, 0.08)"
+          boxShadow: "0 10px 26px rgba(73, 48, 33, 0.05)"
         }
       }
     },
     MuiPaper: {
       styleOverrides: {
+        root: {
+          backgroundImage: "none"
+        },
         rounded: {
-          borderRadius: 20
+          borderRadius: 16
+        }
+      }
+    },
+    MuiAlert: {
+      styleOverrides: {
+        root: {
+          borderRadius: 16
         }
       }
     },
     MuiButton: {
       styleOverrides: {
         root: {
-          borderRadius: 999,
+          borderRadius: 14,
+          minHeight: 40,
           paddingInline: 16
         }
       }
@@ -112,16 +124,23 @@ export const appTheme = createTheme({
     MuiChip: {
       styleOverrides: {
         root: {
-          borderRadius: 999
+          borderRadius: 999,
+          fontWeight: 600
+        }
+      }
+    },
+    MuiOutlinedInput: {
+      styleOverrides: {
+        root: {
+          borderRadius: 16
         }
       }
     },
     MuiDrawer: {
       styleOverrides: {
         paper: {
-          backgroundColor: alpha("#FFF7F1", 0.96),
-          backgroundImage:
-            "radial-gradient(circle at top left, rgba(216, 107, 88, 0.16), transparent 18rem)"
+          backgroundColor: alpha("#FBF6F0", 0.98),
+          backgroundImage: "none"
         }
       }
     }

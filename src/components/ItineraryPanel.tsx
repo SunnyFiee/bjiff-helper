@@ -74,18 +74,18 @@ export function ItineraryPanel({
           <Stack
             direction={{ xs: "column", lg: "row" }}
             spacing={2}
-            sx={{ justifyContent: "space-between" }}
+            sx={{ alignItems: { lg: "flex-start" }, justifyContent: "space-between" }}
           >
-            <Box>
+            <Box sx={{ maxWidth: 720 }}>
               <Typography color="primary" variant="overline">
                 当前片单
               </Typography>
-              <Typography variant="h4">手动管理片单</Typography>
+              <Typography variant="h5">手动管理片单</Typography>
               <Typography color="text.secondary" sx={{ mt: 1 }}>
-                可从推荐草案或时间轴加入当前片单。
+                可从推荐草案或时间轴挑选并整理当前片单。
               </Typography>
             </Box>
-            <Stack direction="row" spacing={1} sx={{ flexWrap: "wrap" }}>
+            <Stack direction="row" spacing={1} sx={{ flexWrap: "wrap", rowGap: 1 }}>
               <Button
                 onClick={onGenerateDraft}
                 startIcon={<AutoAwesomeRounded />}
@@ -180,13 +180,7 @@ export function ItineraryPanel({
 
           <Stack spacing={2}>
             {dayEntries.map(([date, screenings]) => (
-              <Card
-                key={date}
-                sx={{
-                  background:
-                    "linear-gradient(180deg, rgba(255,255,255,0.94) 0%, rgba(255,250,244,0.98) 100%)"
-                }}
-              >
+              <Card key={date}>
                 <CardContent sx={{ p: 2.5 }}>
                   <Stack spacing={2}>
                     <Stack
@@ -214,12 +208,18 @@ export function ItineraryPanel({
                     <Stack spacing={1.25}>
                       {(screenings ?? []).map((screening) => (
                         <Paper key={screening.id} sx={{ p: 1.5 }} variant="outlined">
-                          <Stack
-                            direction={{ xs: "column", lg: "row" }}
-                            spacing={1}
-                            sx={{ justifyContent: "space-between" }}
+                          <Box
+                            sx={{
+                              alignItems: "start",
+                              display: "grid",
+                              gap: 1.25,
+                              gridTemplateColumns: {
+                                xs: "1fr",
+                                lg: "minmax(0, 1.3fr) minmax(220px, 0.95fr) minmax(160px, 0.7fr) auto"
+                              }
+                            }}
                           >
-                            <Box sx={{ minWidth: { lg: 220 } }}>
+                            <Box sx={{ minWidth: 0 }}>
                               <Typography sx={{ fontWeight: 700 }}>
                                 {screening.titleZh}
                               </Typography>
@@ -227,7 +227,7 @@ export function ItineraryPanel({
                                 {screening.unit}
                               </Typography>
                             </Box>
-                            <Box sx={{ minWidth: { lg: 220 } }}>
+                            <Box sx={{ minWidth: 0 }}>
                               <Typography sx={{ fontWeight: 700 }} variant="body2">
                                 {formatTimeLabel(screening.startsAt)} -{" "}
                                 {formatTimeLabel(screening.endsAt)}
@@ -236,7 +236,7 @@ export function ItineraryPanel({
                                 {screening.venue} · {screening.hall || "影厅待定"}
                               </Typography>
                             </Box>
-                            <Box sx={{ minWidth: { lg: 180 } }}>
+                            <Box sx={{ minWidth: 0 }}>
                               <Typography sx={{ fontWeight: 700 }} variant="body2">
                                 {formatCurrency(screening.priceCny)}
                               </Typography>
@@ -244,7 +244,7 @@ export function ItineraryPanel({
                                 {screening.activityInfo || "常规放映"}
                               </Typography>
                             </Box>
-                            <Box>
+                            <Box sx={{ display: "flex", justifyContent: { lg: "flex-end" } }}>
                               <Button
                                 color="error"
                                 onClick={() => onRemoveScreening(screening.id)}
@@ -254,7 +254,7 @@ export function ItineraryPanel({
                                 移除
                               </Button>
                             </Box>
-                          </Stack>
+                          </Box>
                         </Paper>
                       ))}
                     </Stack>
@@ -265,12 +265,7 @@ export function ItineraryPanel({
           </Stack>
 
           {draftRecommendation ? (
-            <Card
-              sx={{
-                background:
-                  "linear-gradient(180deg, rgba(245,250,246,0.96) 0%, rgba(255,255,255,0.98) 100%)"
-              }}
-            >
+            <Card>
               <CardContent sx={{ p: 2.5 }}>
                 <Stack spacing={2}>
                   <Stack
@@ -281,10 +276,10 @@ export function ItineraryPanel({
                     <Box>
                       <Typography variant="h6">推荐草案明细</Typography>
                       <Typography color="text.secondary" variant="body2">
-                        草案现在可以逐场查看。你可以按天浏览，再决定是单条加入，还是整份加入当前片单。
+                        可按天浏览，再决定逐场加入或整份应用。
                       </Typography>
                     </Box>
-                    <Stack direction="row" spacing={1} sx={{ flexWrap: "wrap" }}>
+                    <Stack direction="row" spacing={1} sx={{ flexWrap: "wrap", rowGap: 1 }}>
                       <Chip
                         color="success"
                         label={`推荐草案 ${draftRecommendation.selected.length} 场`}
@@ -349,12 +344,18 @@ export function ItineraryPanel({
                                 return (
                                   <Paper key={screening.id} sx={{ p: 1.5 }} variant="outlined">
                                     <Stack spacing={1.25}>
-                                      <Stack
-                                        direction={{ xs: "column", lg: "row" }}
-                                        spacing={1}
-                                        sx={{ justifyContent: "space-between" }}
+                                      <Box
+                                        sx={{
+                                          alignItems: "start",
+                                          display: "grid",
+                                          gap: 1.25,
+                                          gridTemplateColumns: {
+                                            xs: "1fr",
+                                            lg: "minmax(0, 1.3fr) minmax(220px, 0.95fr) minmax(160px, 0.7fr) auto"
+                                          }
+                                        }}
                                       >
-                                        <Box sx={{ minWidth: { lg: 220 } }}>
+                                        <Box sx={{ minWidth: 0 }}>
                                           <Typography sx={{ fontWeight: 700 }}>
                                             {screening.titleZh}
                                           </Typography>
@@ -362,7 +363,7 @@ export function ItineraryPanel({
                                             {screening.unit}
                                           </Typography>
                                         </Box>
-                                        <Box sx={{ minWidth: { lg: 220 } }}>
+                                        <Box sx={{ minWidth: 0 }}>
                                           <Typography sx={{ fontWeight: 700 }} variant="body2">
                                             {formatTimeLabel(screening.startsAt)} -{" "}
                                             {formatTimeLabel(screening.endsAt)}
@@ -371,7 +372,7 @@ export function ItineraryPanel({
                                             {screening.venue} · {screening.hall || "影厅待定"}
                                           </Typography>
                                         </Box>
-                                        <Box sx={{ minWidth: { lg: 180 } }}>
+                                        <Box sx={{ minWidth: 0 }}>
                                           <Typography sx={{ fontWeight: 700 }} variant="body2">
                                             {formatCurrency(screening.priceCny)}
                                           </Typography>
@@ -379,7 +380,9 @@ export function ItineraryPanel({
                                             {screening.activityInfo || "常规放映"}
                                           </Typography>
                                         </Box>
-                                        <Box>
+                                        <Box
+                                          sx={{ display: "flex", justifyContent: { lg: "flex-end" } }}
+                                        >
                                           <Button
                                             disabled={isInCurrent}
                                             onClick={() => onAddDraftScreening(screening.id)}
@@ -389,7 +392,7 @@ export function ItineraryPanel({
                                             {isInCurrent ? "已在当前片单" : "加入当前片单"}
                                           </Button>
                                         </Box>
-                                      </Stack>
+                                      </Box>
 
                                       <Stack direction="row" spacing={1} sx={{ flexWrap: "wrap" }}>
                                         {screening.reasons.map((reason) => (
@@ -423,7 +426,7 @@ export function ItineraryPanel({
 
 function MetricCard({ label, value }: { label: string; value: string }) {
   return (
-    <Paper sx={{ p: 2 }} variant="outlined">
+    <Paper sx={{ minHeight: 96, p: 2 }} variant="outlined">
       <Stack spacing={0.5}>
         <Typography color="text.secondary" variant="body2">
           {label}

@@ -547,18 +547,18 @@ export function TimelineView({
           <Stack
             direction={{ xs: "column", lg: "row" }}
             spacing={2}
-            sx={{ justifyContent: "space-between" }}
+            sx={{ alignItems: { lg: "flex-start" }, justifyContent: "space-between" }}
           >
-            <Box>
+            <Box sx={{ maxWidth: 760 }}>
               <Typography color="primary" variant="overline">
                 时间轴选片
               </Typography>
-              <Typography variant="h4">按天看节奏，再决定拿哪场</Typography>
+              <Typography variant="h5">按天看节奏，再决定拿哪场</Typography>
               <Typography color="text.secondary" sx={{ mt: 1 }}>
                 按时间重叠和间隔查看当天场次。
               </Typography>
             </Box>
-            <Stack direction={{ xs: "row", md: "column" }} spacing={1}>
+            <Stack direction="row" spacing={1} sx={{ flexWrap: "wrap", rowGap: 1 }}>
               <Chip color="primary" label={`当前片单 ${currentItineraryIds.size} 场`} />
               <Chip
                 color="success"
@@ -576,7 +576,7 @@ export function TimelineView({
             </Alert>
           ) : null}
 
-          <Stack direction="row" spacing={1} sx={{ flexWrap: "wrap" }}>
+          <Stack direction="row" spacing={1} sx={{ flexWrap: "wrap", rowGap: 1 }}>
             {dateOptions.map((date) => {
               const count = screeningsByDate.get(date)?.length ?? 0;
               return (
@@ -625,7 +625,16 @@ export function TimelineView({
                 </Stack>
               </Stack>
 
-              <Stack direction={{ xs: "column", md: "row" }} spacing={1.25} sx={{ flexWrap: "wrap" }}>
+              <Box
+                sx={{
+                  display: "grid",
+                  gap: 1.25,
+                  gridTemplateColumns: {
+                    xs: "repeat(2, minmax(0, 1fr))",
+                    xl: "repeat(5, minmax(0, 1fr))"
+                  }
+                }}
+              >
                 <SummaryMetric
                   label="首场"
                   value={earliestScreening ? formatTimeLabel(earliestScreening.startsAt) : "暂无"}
@@ -641,7 +650,7 @@ export function TimelineView({
                   tone={transitionSeverity}
                   value={formatGapSummary(dayTransitionAnalysis.minGapMinutes)}
                 />
-              </Stack>
+              </Box>
             </Stack>
           ) : null}
 
@@ -660,12 +669,7 @@ export function TimelineView({
                 }
               }}
             >
-              <Card
-                sx={{
-                  background:
-                    "linear-gradient(180deg, rgba(255,255,255,0.92) 0%, rgba(255,248,242,0.98) 100%)"
-                }}
-              >
+              <Card>
                 <CardContent sx={{ p: 2.5 }}>
                   <Stack spacing={2}>
                     <Stack
@@ -1177,11 +1181,15 @@ export function TimelineView({
 
 function DetailRow({ label, value }: { label: string; value: string }) {
   return (
-    <Stack direction="row" spacing={2} sx={{ justifyContent: "space-between" }}>
-      <Typography color="text.secondary" variant="body2">
+    <Stack
+      direction="row"
+      spacing={2}
+      sx={{ alignItems: "center", justifyContent: "space-between" }}
+    >
+      <Typography color="text.secondary" sx={{ flex: 1, minWidth: 0 }} variant="body2">
         {label}
       </Typography>
-      <Typography sx={{ fontWeight: 700, textAlign: "right" }} variant="body2">
+      <Typography sx={{ flexShrink: 0, fontWeight: 700, textAlign: "right" }} variant="body2">
         {value}
       </Typography>
     </Stack>
@@ -1208,7 +1216,7 @@ function SummaryMetric({
     <Paper
       sx={{
         border: `1px solid ${alpha(accentMap[tone], 0.18)}`,
-        flex: "1 1 140px",
+        minHeight: 84,
         minWidth: 0,
         p: 1.25
       }}
