@@ -25,6 +25,25 @@ export interface Film {
   durationMinutes: number;
   unit: string;
   screeningIds: string[];
+  metadata?: FilmMetadata;
+}
+
+export interface FilmMetadata {
+  countries: string[];
+  mainlandReleaseDate: string | null;
+  languages: string[];
+  genres: string[];
+  cast: string[];
+  castCollectCount: number | null;
+  director: string | null;
+  directorCollectCount: number | null;
+  combinedCollectCount: number | null;
+  doubanRatingValue: number | null;
+  doubanRatingCount: number | null;
+  imdbId: string | null;
+  imdbRatingValue: number | null;
+  imdbRatingCount: number | null;
+  awards: string[];
 }
 
 export interface Screening {

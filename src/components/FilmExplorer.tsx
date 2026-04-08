@@ -6,6 +6,7 @@ import {
   Card,
   CardContent,
   Chip,
+  Divider,
   MenuItem,
   Paper,
   Stack,
@@ -123,99 +124,106 @@ export function FilmExplorer({
             </Stack>
           </Stack>
 
-          <Box
+          <Paper
             sx={{
-              display: "grid",
-              gap: 2,
-              gridTemplateColumns: {
-                xs: "1fr",
-                md: "minmax(0, 2fr) repeat(4, minmax(0, 1fr))"
-              },
-              alignItems: "center"
+              backgroundColor: (theme) => alpha(theme.palette.common.white, 0.76),
+              p: 1.5
             }}
+            variant="outlined"
           >
-            <TextField
-              label="搜索"
-              onChange={(event) =>
-                onFiltersChange({
-                  ...filters,
-                  query: event.target.value
-                })
-              }
-              placeholder="片名 / 单元 / 影院 / 活动信息"
-              value={filters.query}
-            />
-            <TextField
-              label="日期"
-              onChange={(event) =>
-                onFiltersChange({
-                  ...filters,
-                  date: event.target.value
-                })
-              }
-              select
-              value={filters.date}
+            <Box
+              sx={{
+                display: "grid",
+                gap: 1.5,
+                gridTemplateColumns: {
+                  xs: "1fr",
+                  md: "minmax(0, 2fr) repeat(4, minmax(0, 1fr))"
+                }
+              }}
             >
-              <MenuItem value="all">全部日期</MenuItem>
-              {dates.map((date) => (
-                <MenuItem key={date} value={date}>
-                  {date}
-                </MenuItem>
-              ))}
-            </TextField>
-            <TextField
-              label="单元"
-              onChange={(event) =>
-                onFiltersChange({
-                  ...filters,
-                  unit: event.target.value
-                })
-              }
-              select
-              value={filters.unit}
-            >
-              <MenuItem value="all">全部单元</MenuItem>
-              {units.map((unit) => (
-                <MenuItem key={unit} value={unit}>
-                  {unit}
-                </MenuItem>
-              ))}
-            </TextField>
-            <TextField
-              label="影院"
-              onChange={(event) =>
-                onFiltersChange({
-                  ...filters,
-                  venue: event.target.value
-                })
-              }
-              select
-              value={filters.venue}
-            >
-              <MenuItem value="all">全部影院</MenuItem>
-              {venues.map((venue) => (
-                <MenuItem key={venue} value={venue}>
-                  {venue}
-                </MenuItem>
-              ))}
-            </TextField>
-            <TextField
-              label="最高票价"
-              onChange={(event) =>
-                onFiltersChange({
-                  ...filters,
-                  maxPrice: event.target.value
-                })
-              }
-              placeholder="不限"
-              slotProps={{ htmlInput: { min: 0 } }}
-              type="number"
-              value={filters.maxPrice}
-            />
-            <Button onClick={onClearFilters} variant="outlined">
-              清空筛选
-            </Button>
-          </Box>
+              <TextField
+                label="搜索"
+                onChange={(event) =>
+                  onFiltersChange({
+                    ...filters,
+                    query: event.target.value
+                  })
+                }
+                placeholder="片名 / 导演 / 主演 / 国家 / 影院"
+                value={filters.query}
+              />
+              <TextField
+                label="日期"
+                onChange={(event) =>
+                  onFiltersChange({
+                    ...filters,
+                    date: event.target.value
+                  })
+                }
+                select
+                value={filters.date}
+              >
+                <MenuItem value="all">全部日期</MenuItem>
+                {dates.map((date) => (
+                  <MenuItem key={date} value={date}>
+                    {date}
+                  </MenuItem>
+                ))}
+              </TextField>
+              <TextField
+                label="单元"
+                onChange={(event) =>
+                  onFiltersChange({
+                    ...filters,
+                    unit: event.target.value
+                  })
+                }
+                select
+                value={filters.unit}
+              >
+                <MenuItem value="all">全部单元</MenuItem>
+                {units.map((unit) => (
+                  <MenuItem key={unit} value={unit}>
+                    {unit}
+                  </MenuItem>
+                ))}
+              </TextField>
+              <TextField
+                label="影院"
+                onChange={(event) =>
+                  onFiltersChange({
+                    ...filters,
+                    venue: event.target.value
+                  })
+                }
+                select
+                value={filters.venue}
+              >
+                <MenuItem value="all">全部影院</MenuItem>
+                {venues.map((venue) => (
+                  <MenuItem key={venue} value={venue}>
+                    {venue}
+                  </MenuItem>
+                ))}
+              </TextField>
+              <TextField
+                label="最高票价"
+                onChange={(event) =>
+                  onFiltersChange({
+                    ...filters,
+                    maxPrice: event.target.value
+                  })
+                }
+                placeholder="不限"
+                slotProps={{ htmlInput: { min: 0 } }}
+                type="number"
+                value={filters.maxPrice}
+              />
+              <Button onClick={onClearFilters} variant="outlined">
+                清空筛选
+              </Button>
+            </Box>
+          </Paper>
 
           {cards.length === 0 ? (
             <Alert severity="warning" variant="outlined">
@@ -243,38 +251,178 @@ export function FilmExplorer({
               ).length;
               const filmKey = buildFilmDoubanKey(film);
               const selectedDoubanMatch = doubanMatches[filmKey];
+              const filmMetadata = film.metadata;
 
               return (
-                <Card key={film.id}>
-                  <CardContent sx={{ p: 2.5 }}>
-                    <Stack spacing={2}>
-                      <Stack
-                        direction={{ xs: "column", md: "row" }}
-                        spacing={2}
-                        sx={{ alignItems: { md: "flex-start" }, justifyContent: "space-between" }}
-                      >
+                <Card key={film.id} sx={{ overflow: "hidden" }}>
+                  <Box
+                    sx={{
+                      display: "grid",
+                      gridTemplateColumns: {
+                        xs: "1fr",
+                        lg: "minmax(0, 1fr) 240px"
+                      }
+                    }}
+                  >
+                    <CardContent sx={{ p: 2.5 }}>
+                      <Stack spacing={1.75}>
+                        <Stack
+                          direction="row"
+                          spacing={1}
+                          sx={{ flexWrap: "wrap", rowGap: 1 }}
+                        >
+                          <Chip label={film.unit} size="small" variant="outlined" />
+                          <Chip label={String(film.year)} size="small" variant="outlined" />
+                          <Chip
+                            label={formatDuration(film.durationMinutes)}
+                            size="small"
+                            variant="outlined"
+                          />
+                        </Stack>
+
                         <Box sx={{ minWidth: 0 }}>
-                          <Stack
-                            direction="row"
-                            spacing={1}
-                            sx={{ flexWrap: "wrap", mb: 1, rowGap: 1 }}
-                          >
-                            <Chip label={film.unit} size="small" variant="outlined" />
-                            <Chip label={String(film.year)} size="small" variant="outlined" />
-                            <Chip
-                              label={formatDuration(film.durationMinutes)}
-                              size="small"
-                              variant="outlined"
-                            />
-                          </Stack>
                           <Typography variant="h6">{film.titleZh}</Typography>
                           <Typography color="text.secondary" variant="body2">
                             {film.titleEn || "暂无英文片名"}
                           </Typography>
                         </Box>
-                        <Stack direction="row" spacing={1} sx={{ flexWrap: "wrap", rowGap: 1 }}>
+
+                        <Box
+                          sx={{
+                            display: "grid",
+                            gap: 1,
+                            gridTemplateColumns: {
+                              xs: "1fr",
+                              sm: "repeat(2, minmax(0, 1fr))"
+                            }
+                          }}
+                        >
+                          <FilmMetaBlock
+                            label="导演"
+                            value={filmMetadata?.director || "待补充"}
+                          />
+                          <FilmMetaBlock
+                            label="主演"
+                            value={
+                              filmMetadata?.cast.length
+                                ? filmMetadata.cast.slice(0, 3).join(" / ")
+                                : "待补充"
+                            }
+                          />
+                          <FilmMetaBlock
+                            label="地区 / 语种"
+                            value={
+                              [
+                                filmMetadata?.countries.length
+                                  ? filmMetadata.countries.join(" / ")
+                                  : "",
+                                filmMetadata?.languages.length
+                                  ? filmMetadata.languages.join(" / ")
+                                  : ""
+                              ]
+                                .filter(Boolean)
+                                .join(" · ") || "待补充"
+                            }
+                          />
+                          <FilmMetaBlock
+                            label="类型"
+                            value={
+                              filmMetadata?.genres.length
+                                ? filmMetadata.genres.join(" / ")
+                                : "待补充"
+                            }
+                          />
+                        </Box>
+
+                        {filmMetadata?.awards.length ? (
+                          <Stack direction="row" spacing={1} sx={{ flexWrap: "wrap", rowGap: 1 }}>
+                            {filmMetadata.awards.slice(0, 2).map((award) => (
+                              <Chip
+                                key={`${film.id}-${award}`}
+                                color="secondary"
+                                label={summarizeAward(award)}
+                                size="small"
+                                variant="outlined"
+                              />
+                            ))}
+                          </Stack>
+                        ) : null}
+                      </Stack>
+                    </CardContent>
+
+                    <Box
+                      sx={{
+                        background: (theme) =>
+                          `linear-gradient(180deg, ${alpha(theme.palette.primary.main, 0.06)} 0%, ${alpha(
+                            theme.palette.common.white,
+                            0.76
+                          )} 100%)`,
+                        borderLeft: {
+                          lg: (theme) => `1px solid ${theme.palette.divider}`
+                        },
+                        borderTop: {
+                          xs: (theme) => `1px solid ${theme.palette.divider}`,
+                          lg: "none"
+                        },
+                        p: 2
+                      }}
+                    >
+                      <Stack spacing={1.25}>
+                        <Typography variant="subtitle2">评分与操作</Typography>
+                        <ScoreTile
+                          hint={
+                            filmMetadata?.doubanRatingCount
+                              ? `${formatDoubanRatingCount(filmMetadata.doubanRatingCount)} 人评价`
+                              : "暂无评分"
+                          }
+                          label="Douban"
+                          tone="primary"
+                          value={
+                            filmMetadata?.doubanRatingValue !== null &&
+                            filmMetadata?.doubanRatingValue !== undefined
+                              ? filmMetadata.doubanRatingValue.toFixed(1)
+                              : "待补"
+                          }
+                        />
+                        <ScoreTile
+                          hint={
+                            filmMetadata?.imdbRatingCount
+                              ? `${formatCompactCount(filmMetadata.imdbRatingCount)} 人评价`
+                              : "暂无评分"
+                          }
+                          label="IMDb"
+                          tone="default"
+                          value={
+                            filmMetadata?.imdbRatingValue !== null &&
+                            filmMetadata?.imdbRatingValue !== undefined
+                              ? filmMetadata.imdbRatingValue.toFixed(1)
+                              : "待补"
+                          }
+                        />
+                        <Box
+                          sx={{
+                            display: "grid",
+                            gap: 1,
+                            gridTemplateColumns: "repeat(2, minmax(0, 1fr))"
+                          }}
+                        >
+                          <ScoreTile
+                            hint="当前筛选"
+                            label="场次"
+                            tone="success"
+                            value={`${screenings.length}`}
+                          />
+                          <ScoreTile
+                            hint="已加入片单"
+                            label="片单"
+                            tone="secondary"
+                            value={`${itineraryCount}`}
+                          />
+                        </Box>
+                        <Stack spacing={1}>
                           <Button
                             color="primary"
+                            fullWidth
                             onClick={() =>
                               onFilmVote(
                                 film.id,
@@ -284,10 +432,11 @@ export function FilmExplorer({
                             size="small"
                             variant={filmVote === "must" ? "contained" : "outlined"}
                           >
-                            必看
+                            {filmVote === "must" ? "取消必看" : "设为必看"}
                           </Button>
                           <Button
                             color="error"
+                            fullWidth
                             onClick={() =>
                               onFilmVote(
                                 film.id,
@@ -297,12 +446,18 @@ export function FilmExplorer({
                             size="small"
                             variant={filmVote === "avoid" ? "contained" : "outlined"}
                           >
-                            不考虑
+                            {filmVote === "avoid" ? "取消不考虑" : "不考虑"}
                           </Button>
                         </Stack>
                       </Stack>
+                    </Box>
+                  </Box>
 
-                      <Stack direction="row" spacing={1} sx={{ flexWrap: "wrap" }}>
+                  <Divider />
+
+                  <CardContent sx={{ p: 2.5 }}>
+                    <Stack spacing={1.5}>
+                      <Stack direction="row" spacing={1} sx={{ flexWrap: "wrap", rowGap: 1 }}>
                         <Chip label={`${screenings.length} 场符合当前筛选`} size="small" />
                         <Chip
                           color="success"
@@ -316,6 +471,127 @@ export function FilmExplorer({
                           size="small"
                           variant={itineraryCount > 0 ? "filled" : "outlined"}
                         />
+                        {filmMetadata?.combinedCollectCount ? (
+                          <Chip
+                            label={`主创收藏 ${formatCompactCount(
+                              filmMetadata.combinedCollectCount
+                            )}`}
+                            size="small"
+                            variant="outlined"
+                          />
+                        ) : null}
+                      </Stack>
+
+                      <Stack spacing={1.25}>
+                        {screenings.slice(0, 5).map((screening) => {
+                          const screeningVote = screeningVotes[screening.id];
+                          const isRecommended = recommendedIds.has(screening.id);
+
+                          return (
+                            <Paper
+                              key={screening.id}
+                              sx={{
+                                backgroundColor: (theme) =>
+                                  isRecommended
+                                    ? alpha(theme.palette.success.main, 0.08)
+                                    : alpha(theme.palette.common.white, 0.72),
+                                border: (theme) =>
+                                  `1px solid ${
+                                    isRecommended
+                                      ? alpha(theme.palette.success.main, 0.28)
+                                      : theme.palette.divider
+                                  }`,
+                                p: 1.5
+                              }}
+                              variant="outlined"
+                            >
+                              <Stack spacing={1.25}>
+                                <Stack
+                                  direction={{ xs: "column", md: "row" }}
+                                  spacing={1}
+                                  sx={{ alignItems: { md: "flex-start" }, justifyContent: "space-between" }}
+                                >
+                                  <Box sx={{ minWidth: 0 }}>
+                                    <Typography sx={{ fontWeight: 700 }} variant="body1">
+                                      {formatDateTimeLabel(screening.startsAt)}
+                                    </Typography>
+                                    <Typography color="text.secondary" variant="body2">
+                                      {screening.venue} · {screening.hall || "影厅待定"}
+                                    </Typography>
+                                  </Box>
+                                  <Stack
+                                    direction="row"
+                                    spacing={1}
+                                    sx={{
+                                      flexWrap: "wrap",
+                                      justifyContent: "flex-end"
+                                    }}
+                                  >
+                                    {isRecommended ? (
+                                      <Chip color="success" label="推荐草案" size="small" />
+                                    ) : null}
+                                    {currentItineraryIds.has(screening.id) ? (
+                                      <Chip color="primary" label="当前片单" size="small" />
+                                    ) : null}
+                                    {screening.activityInfo ? (
+                                      <Chip
+                                        color="secondary"
+                                        label={screening.activityInfo}
+                                        size="small"
+                                        variant="outlined"
+                                      />
+                                    ) : null}
+                                  </Stack>
+                                </Stack>
+
+                                <Typography color="text.secondary" variant="body2">
+                                  {formatCurrency(screening.priceCny)}
+                                </Typography>
+
+                                <Stack direction="row" spacing={1} sx={{ flexWrap: "wrap" }}>
+                                  <Button
+                                    color="primary"
+                                    onClick={() =>
+                                      onScreeningVote(
+                                        screening.id,
+                                        screeningVote === "boost"
+                                          ? undefined
+                                          : "boost"
+                                      )
+                                    }
+                                    size="small"
+                                    variant={
+                                      screeningVote === "boost"
+                                        ? "contained"
+                                        : "outlined"
+                                    }
+                                  >
+                                    优先这场
+                                  </Button>
+                                  <Button
+                                    color="error"
+                                    onClick={() =>
+                                      onScreeningVote(
+                                        screening.id,
+                                        screeningVote === "block"
+                                          ? undefined
+                                          : "block"
+                                      )
+                                    }
+                                    size="small"
+                                    variant={
+                                      screeningVote === "block"
+                                        ? "contained"
+                                        : "outlined"
+                                    }
+                                  >
+                                    屏蔽
+                                  </Button>
+                                </Stack>
+                              </Stack>
+                            </Paper>
+                          );
+                        })}
                       </Stack>
 
                       <Paper
@@ -429,118 +705,6 @@ export function FilmExplorer({
                           ) : null}
                         </Stack>
                       </Paper>
-
-                      <Stack spacing={1.25}>
-                        {screenings.slice(0, 5).map((screening) => {
-                          const screeningVote = screeningVotes[screening.id];
-                          const isRecommended = recommendedIds.has(screening.id);
-
-                          return (
-                            <Paper
-                              key={screening.id}
-                              sx={{
-                                backgroundColor: (theme) =>
-                                  isRecommended
-                                    ? alpha(theme.palette.success.main, 0.08)
-                                    : alpha(theme.palette.common.white, 0.72),
-                                border: (theme) =>
-                                  `1px solid ${
-                                    isRecommended
-                                      ? alpha(theme.palette.success.main, 0.28)
-                                      : theme.palette.divider
-                                  }`,
-                                p: 1.5
-                              }}
-                              variant="outlined"
-                            >
-                              <Stack spacing={1.25}>
-                                <Stack
-                                  direction={{ xs: "column", md: "row" }}
-                                  spacing={1}
-                                  sx={{ alignItems: { md: "flex-start" }, justifyContent: "space-between" }}
-                                >
-                                  <Box sx={{ minWidth: 0 }}>
-                                    <Typography sx={{ fontWeight: 700 }} variant="body1">
-                                      {formatDateTimeLabel(screening.startsAt)}
-                                    </Typography>
-                                    <Typography color="text.secondary" variant="body2">
-                                      {screening.venue} · {screening.hall || "影厅待定"}
-                                    </Typography>
-                                  </Box>
-                                  <Stack
-                                    direction="row"
-                                    spacing={1}
-                                    sx={{
-                                      flexWrap: "wrap",
-                                      justifyContent: "flex-end"
-                                    }}
-                                  >
-                                    {isRecommended ? (
-                                      <Chip color="success" label="推荐草案" size="small" />
-                                    ) : null}
-                                    {currentItineraryIds.has(screening.id) ? (
-                                      <Chip color="primary" label="当前片单" size="small" />
-                                    ) : null}
-                                    {screening.activityInfo ? (
-                                      <Chip
-                                        color="secondary"
-                                        label={screening.activityInfo}
-                                        size="small"
-                                        variant="outlined"
-                                      />
-                                    ) : null}
-                                  </Stack>
-                                </Stack>
-
-                                <Typography color="text.secondary" variant="body2">
-                                  {formatCurrency(screening.priceCny)}
-                                </Typography>
-
-                                <Stack direction="row" spacing={1} sx={{ flexWrap: "wrap" }}>
-                                  <Button
-                                    color="primary"
-                                    onClick={() =>
-                                      onScreeningVote(
-                                        screening.id,
-                                        screeningVote === "boost"
-                                          ? undefined
-                                          : "boost"
-                                      )
-                                    }
-                                    size="small"
-                                    variant={
-                                      screeningVote === "boost"
-                                        ? "contained"
-                                        : "outlined"
-                                    }
-                                  >
-                                    优先这场
-                                  </Button>
-                                  <Button
-                                    color="error"
-                                    onClick={() =>
-                                      onScreeningVote(
-                                        screening.id,
-                                        screeningVote === "block"
-                                          ? undefined
-                                          : "block"
-                                      )
-                                    }
-                                    size="small"
-                                    variant={
-                                      screeningVote === "block"
-                                        ? "contained"
-                                        : "outlined"
-                                    }
-                                  >
-                                    屏蔽
-                                  </Button>
-                                </Stack>
-                              </Stack>
-                            </Paper>
-                          );
-                        })}
-                      </Stack>
                     </Stack>
                   </CardContent>
                 </Card>
@@ -674,4 +838,98 @@ function DoubanResultCard({
       </Stack>
     </Paper>
   );
+}
+
+function FilmMetaBlock({ label, value }: { label: string; value: string }) {
+  return (
+    <Paper
+      sx={{
+        backgroundColor: (theme) => alpha(theme.palette.common.white, 0.74),
+        minHeight: 72,
+        p: 1.25
+      }}
+      variant="outlined"
+    >
+      <Typography color="text.secondary" variant="caption">
+        {label}
+      </Typography>
+      <Typography
+        sx={{
+          display: "-webkit-box",
+          fontWeight: 700,
+          mt: 0.5,
+          overflow: "hidden",
+          WebkitBoxOrient: "vertical",
+          WebkitLineClamp: 2
+        }}
+        variant="body2"
+      >
+        {value}
+      </Typography>
+    </Paper>
+  );
+}
+
+function ScoreTile({
+  label,
+  value,
+  hint,
+  tone
+}: {
+  label: string;
+  value: string;
+  hint: string;
+  tone: "default" | "primary" | "secondary" | "success";
+}) {
+  const accent =
+    tone === "primary"
+      ? "#B33A3A"
+      : tone === "secondary"
+        ? "#C5922E"
+        : tone === "success"
+          ? "#3D8C6F"
+          : "#734E3C";
+
+  return (
+    <Paper
+      sx={{
+        backgroundColor: (theme) => alpha(theme.palette.common.white, 0.74),
+        overflow: "hidden",
+        p: 1.25,
+        position: "relative"
+      }}
+      variant="outlined"
+    >
+      <Box
+        sx={{
+          backgroundColor: alpha(accent, 0.16),
+          height: "100%",
+          left: 0,
+          position: "absolute",
+          top: 0,
+          width: 4
+        }}
+      />
+      <Typography color="text.secondary" variant="caption">
+        {label}
+      </Typography>
+      <Typography sx={{ fontSize: 24, fontWeight: 800, lineHeight: 1.1, mt: 0.5 }}>
+        {value}
+      </Typography>
+      <Typography color="text.secondary" sx={{ mt: 0.35 }} variant="caption">
+        {hint}
+      </Typography>
+    </Paper>
+  );
+}
+
+function formatCompactCount(value: number) {
+  if (value >= 10000) {
+    return `${(value / 10000).toFixed(value >= 100000 ? 0 : 1)}万`;
+  }
+  return value.toLocaleString("zh-CN");
+}
+
+function summarizeAward(value: string) {
+  return value.split(" / ").slice(-1)[0] ?? value;
 }

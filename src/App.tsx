@@ -195,17 +195,27 @@ function emptyRecommendation(): RecommendationResult {
 }
 
 function matchesFilters(
+  film: Film,
   screening: Screening,
   query: string,
   filters: ScreeningFilters
 ) {
+  const filmMetadata = film.metadata;
   const haystack = [
+    film.titleZh,
+    film.titleEn,
     screening.titleZh,
     screening.titleEn,
     screening.unit,
     screening.venue,
     screening.hall,
-    screening.activityInfo
+    screening.activityInfo,
+    filmMetadata?.director ?? "",
+    ...(filmMetadata?.cast ?? []),
+    ...(filmMetadata?.countries ?? []),
+    ...(filmMetadata?.languages ?? []),
+    ...(filmMetadata?.genres ?? []),
+    ...(filmMetadata?.awards ?? [])
   ]
     .join(" ")
     .toLowerCase();
@@ -244,7 +254,7 @@ function buildVisibleFilms(
     const screenings = film.screeningIds
       .map((screeningId) => screeningsById.get(screeningId))
       .filter((item): item is Screening => Boolean(item))
-      .filter((screening) => matchesFilters(screening, query, filters))
+      .filter((screening) => matchesFilters(film, screening, query, filters))
       .sort((left, right) => left.startsAt.localeCompare(right.startsAt));
 
     if (screenings.length === 0) {
@@ -588,6 +598,30 @@ export default function App() {
     const filmKey = buildFilmDoubanKey(film);
     return count + (doubanMatches[filmKey] ? 1 : 0);
   }, 0);
+  const filmsWithMetadata = dataset.films.filter((film) => film.metadata).length;
+  const doubanRatedFilmCount = dataset.films.filter(
+    (film) => film.metadata?.doubanRatingValue !== null && film.metadata?.doubanRatingValue !== undefined
+  ).length;
+  const imdbRatedFilmCount = dataset.films.filter(
+    (film) => film.metadata?.imdbRatingValue !== null && film.metadata?.imdbRatingValue !== undefined
+  ).length;
+  const awardFilmCount = dataset.films.filter(
+    (film) => (film.metadata?.awards.length ?? 0) > 0
+  ).length;
+  const highRatedFilmCount = dataset.films.filter(
+    (film) => (film.metadata?.doubanRatingValue ?? 0) >= 8
+  ).length;
+  const metadataCoverage = dataset.summary.filmCount
+    ? Math.round((filmsWithMetadata / dataset.summary.filmCount) * 100)
+    : 0;
+  const averageDoubanRating = doubanRatedFilmCount
+    ? (
+        dataset.films.reduce(
+          (sum, film) => sum + (film.metadata?.doubanRatingValue ?? 0),
+          0
+        ) / doubanRatedFilmCount
+      ).toFixed(1)
+    : null;
 
   async function refreshSavedItineraries() {
     if (!desktopMode) {
@@ -1502,13 +1536,26 @@ export default function App() {
             sx={{
               background: `linear-gradient(180deg, ${alpha(
                 theme.palette.primary.main,
-                0.06
-              )} 0%, ${alpha(theme.palette.common.white, 0.82)} 100%)`,
+                0.08
+              )} 0%, ${alpha(theme.palette.common.white, 0.9)} 100%)`,
               border: `1px solid ${alpha(theme.palette.primary.main, 0.08)}`,
-              p: { xs: 2.75, md: 3.25 }
+              overflow: "hidden",
+              p: { xs: 2.75, md: 3.25 },
+              position: "relative"
             }}
             variant="outlined"
           >
+            <Box
+              sx={{
+                background: alpha(theme.palette.secondary.main, 0.08),
+                borderRadius: "50%",
+                height: 240,
+                position: "absolute",
+                right: -90,
+                top: -100,
+                width: 240
+              }}
+            />
             <Box
               sx={{
                 alignItems: "stretch",
@@ -1544,6 +1591,33 @@ export default function App() {
                     variant="outlined"
                   />
                 </Stack>
+                <Paper
+                  sx={{
+                    backgroundColor: alpha(theme.palette.common.white, 0.72),
+                    display: "grid",
+                    gap: 1.25,
+                    gridTemplateColumns: {
+                      xs: "1fr",
+                      sm: "repeat(3, minmax(0, 1fr))"
+                    },
+                    maxWidth: 780,
+                    p: 1.5
+                  }}
+                  variant="outlined"
+                >
+                  <HeroInlineFact
+                    label="数据源"
+                    value={dataset.sourceFile}
+                  />
+                  <HeroInlineFact
+                    label="资料覆盖"
+                    value={`${filmsWithMetadata}/${dataset.summary.filmCount} 部`}
+                  />
+                  <HeroInlineFact
+                    label="豆瓣绑定"
+                    value={`${linkedDoubanCount} 部`}
+                  />
+                </Paper>
               </Stack>
 
               <Box
@@ -1557,10 +1631,30 @@ export default function App() {
                   }
                 }}
               >
-                <HeroStat label="当前片单" value={`${currentItineraryScreenings.length} 场`} />
-                <HeroStat label="片单预算" value={formatCurrency(currentItineraryTotal)} />
-                <HeroStat label="推荐草案" value={`${previewRecommendation.selected.length} 场`} />
-                <HeroStat label="豆瓣接入" value={`${linkedDoubanCount} 部`} />
+                <HeroStat
+                  hint="当前已手动挑入"
+                  label="当前片单"
+                  tone="primary"
+                  value={`${currentItineraryScreenings.length} 场`}
+                />
+                <HeroStat
+                  hint="当前片单预算"
+                  label="预算"
+                  tone="secondary"
+                  value={formatCurrency(currentItineraryTotal)}
+                />
+                <HeroStat
+                  hint={`已补资料 ${filmsWithMetadata} 部`}
+                  label="资料覆盖"
+                  tone="success"
+                  value={`${metadataCoverage}%`}
+                />
+                <HeroStat
+                  hint={averageDoubanRating ? `平均豆瓣 ${averageDoubanRating}` : "暂无均分"}
+                  label="豆瓣 8+"
+                  tone="default"
+                  value={`${highRatedFilmCount} 部`}
+                />
               </Box>
             </Box>
           </Paper>
@@ -1573,7 +1667,8 @@ export default function App() {
                   gap: 2.25,
                   gridTemplateColumns: {
                     xs: "1fr",
-                    sm: "repeat(3, minmax(0, 1fr))"
+                    sm: "repeat(2, minmax(0, 1fr))",
+                    xl: "repeat(4, minmax(0, 1fr))"
                   }
                 }}
               >
@@ -1586,6 +1681,11 @@ export default function App() {
                   hint={`分布于 ${dataset.summary.unitCount} 个单元`}
                   label="影片数"
                   value={String(dataset.summary.filmCount)}
+                />
+                <StatCard
+                  hint={`${metadataCoverage}% 影片已补资料`}
+                  label="资料覆盖"
+                  value={`${filmsWithMetadata}`}
                 />
                 <StatCard
                   hint={`涉及 ${dataset.summary.venueCount} 家影院`}
@@ -1685,7 +1785,7 @@ export default function App() {
                   </CardContent>
                 </Card>
 
-                <Card sx={{ gridColumn: { xl: "span 4" } }}>
+                <Card sx={{ gridColumn: { xl: "span 3" } }}>
                   <CardContent sx={{ p: 2.5 }}>
                     <Stack spacing={1.5}>
                       <Typography variant="h6">热门单元</Typography>
@@ -1696,7 +1796,7 @@ export default function App() {
                   </CardContent>
                 </Card>
 
-                <Card sx={{ gridColumn: { xl: "span 4" } }}>
+                <Card sx={{ gridColumn: { xl: "span 3" } }}>
                   <CardContent sx={{ p: 2.5 }}>
                     <Stack spacing={1.5}>
                       <Typography variant="h6">高频影院</Typography>
@@ -1707,7 +1807,7 @@ export default function App() {
                   </CardContent>
                 </Card>
 
-                <Card sx={{ gridColumn: { xl: "span 4" } }}>
+                <Card sx={{ gridColumn: { xl: "span 3" } }}>
                   <CardContent sx={{ p: 2.5 }}>
                     <Stack spacing={1.5}>
                       <Typography variant="h6">当前策略概览</Typography>
@@ -1730,6 +1830,34 @@ export default function App() {
                       <SplitRow
                         label="优先带活动"
                         value={profile.preferWithActivity ? "是" : "否"}
+                      />
+                    </Stack>
+                  </CardContent>
+                </Card>
+
+                <Card sx={{ gridColumn: { xl: "span 3" } }}>
+                  <CardContent sx={{ p: 2.5 }}>
+                    <Stack spacing={1.5}>
+                      <Typography variant="h6">影片资料概览</Typography>
+                      <SplitRow
+                        label="豆瓣有分"
+                        value={`${doubanRatedFilmCount} 部`}
+                      />
+                      <SplitRow
+                        label="IMDb 有分"
+                        value={`${imdbRatedFilmCount} 部`}
+                      />
+                      <SplitRow
+                        label="带奖项"
+                        value={`${awardFilmCount} 部`}
+                      />
+                      <SplitRow
+                        label="豆瓣 8+"
+                        value={`${highRatedFilmCount} 部`}
+                      />
+                      <SplitRow
+                        label="平均豆瓣"
+                        value={averageDoubanRating ? averageDoubanRating : "暂无"}
                       />
                     </Stack>
                   </CardContent>
@@ -1949,7 +2077,52 @@ function SidebarStatusTile({ label, value }: { label: string; value: string }) {
   );
 }
 
-function HeroStat({ label, value }: { label: string; value: string }) {
+function HeroInlineFact({ label, value }: { label: string; value: string }) {
+  return (
+    <Stack spacing={0.45} sx={{ minWidth: 0 }}>
+      <Typography color="text.secondary" variant="caption">
+        {label}
+      </Typography>
+      <Typography
+        sx={{
+          fontWeight: 700,
+          overflow: "hidden",
+          textOverflow: "ellipsis",
+          whiteSpace: "nowrap"
+        }}
+        variant="body2"
+      >
+        {value}
+      </Typography>
+    </Stack>
+  );
+}
+
+function heroToneAccent(tone: "default" | "primary" | "secondary" | "success") {
+  if (tone === "primary") {
+    return "#B33A3A";
+  }
+  if (tone === "secondary") {
+    return "#C5922E";
+  }
+  if (tone === "success") {
+    return "#3D8C6F";
+  }
+  return "#734E3C";
+}
+
+function HeroStat({
+  label,
+  value,
+  hint,
+  tone = "default"
+}: {
+  label: string;
+  value: string;
+  hint?: string;
+  tone?: "default" | "primary" | "secondary" | "success";
+}) {
+  const accent = heroToneAccent(tone);
   return (
     <Paper
       sx={{
@@ -1961,10 +2134,22 @@ function HeroStat({ label, value }: { label: string; value: string }) {
         justifyContent: "center",
         minHeight: 92,
         minWidth: 0,
-        p: 1.5
+        overflow: "hidden",
+        p: 1.5,
+        position: "relative"
       }}
       variant="outlined"
     >
+      <Box
+        sx={{
+          backgroundColor: alpha(accent, 0.14),
+          height: "100%",
+          left: 0,
+          position: "absolute",
+          top: 0,
+          width: 4
+        }}
+      />
       <Typography color="text.secondary" variant="caption">
         {label}
       </Typography>
@@ -1981,6 +2166,11 @@ function HeroStat({ label, value }: { label: string; value: string }) {
       >
         {value}
       </Typography>
+      {hint ? (
+        <Typography color="text.secondary" sx={{ mt: 0.45 }} variant="caption">
+          {hint}
+        </Typography>
+      ) : null}
     </Paper>
   );
 }
@@ -2014,7 +2204,14 @@ function SplitRow({ label, value }: { label: string; value: string }) {
 
 function InsightMetric({ hint, value }: { hint: string; value: string }) {
   return (
-    <Paper sx={{ minHeight: 92, p: 1.5 }} variant="outlined">
+    <Paper
+      sx={{
+        backgroundColor: alpha("#FFFFFF", 0.78),
+        minHeight: 92,
+        p: 1.5
+      }}
+      variant="outlined"
+    >
       <Typography variant="h6">{value}</Typography>
       <Typography color="text.secondary" variant="body2">
         {hint}
