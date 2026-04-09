@@ -20,7 +20,7 @@
         "minWidth": 1200,
         "minHeight": 760,
         "acceptFirstMouse": true,
-        "decorations": false,
+        "decorations": true,
         "shadow": true,
         "transparent": false,
         "resizable": true
@@ -31,7 +31,7 @@
     }
   },
   "bundle": {
-    "active": false,
+    "active": true,
     "targets": "all"
   }
 }

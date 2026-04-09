@@ -26,22 +26,17 @@ import {
   Stack,
   TextField,
   Toolbar,
-  Tooltip,
   Typography,
   useMediaQuery
 } from "@mui/material";
-import { alpha, useTheme, type Theme } from "@mui/material/styles";
+import { alpha, useTheme } from "@mui/material/styles";
 import AutoAwesomeRounded from "@mui/icons-material/AutoAwesomeRounded";
 import ChecklistRounded from "@mui/icons-material/ChecklistRounded";
-import CloseFullscreenRounded from "@mui/icons-material/CloseFullscreenRounded";
-import CloseRounded from "@mui/icons-material/CloseRounded";
 import DashboardRounded from "@mui/icons-material/DashboardRounded";
 import DeleteOutlineRounded from "@mui/icons-material/DeleteOutlineRounded";
 import DeleteSweepRounded from "@mui/icons-material/DeleteSweepRounded";
 import MenuRounded from "@mui/icons-material/MenuRounded";
 import MovieRounded from "@mui/icons-material/MovieRounded";
-import MinimizeRounded from "@mui/icons-material/MinimizeRounded";
-import OpenInFullRounded from "@mui/icons-material/OpenInFullRounded";
 import RestartAltRounded from "@mui/icons-material/RestartAltRounded";
 import StorageRounded from "@mui/icons-material/StorageRounded";
 import TuneRounded from "@mui/icons-material/TuneRounded";
@@ -58,21 +53,16 @@ import {
   parseDoubanSubjectInput
 } from "./lib/douban";
 import {
-  closeDesktopWindow,
   clearSavedItineraries,
   deleteSavedItinerary,
   exportItineraryFromDesktop,
-  getDesktopWindowMaximizedState,
   importSchedule,
   listSavedItinerariesFromDesktop,
-  minimizeDesktopWindow,
   openExternalUrlFromDesktop,
   pickImportFileFromDesktop,
   resetDatasetToBundled,
   saveItineraryToDesktop,
-  savePreferencesToDesktop,
-  startDraggingDesktopWindow,
-  toggleMaximizeDesktopWindow
+  savePreferencesToDesktop
 } from "./lib/desktop-api";
 import { loadFestivalDataset } from "./lib/data-source";
 import { exportItineraryCsv, exportItineraryIcs } from "./lib/exporters";
@@ -309,7 +299,6 @@ export default function App() {
   const [deletingItineraryId, setDeletingItineraryId] = useState<string | null>(null);
   const [isClearingItineraries, setIsClearingItineraries] = useState(false);
   const [mobileDrawerOpen, setMobileDrawerOpen] = useState(false);
-  const [isDesktopWindowMaximized, setIsDesktopWindowMaximized] = useState(false);
 
   const deferredQuery = useDeferredValue(filters.query.trim().toLowerCase());
   const desktopMode = isTauriRuntime();
@@ -370,69 +359,6 @@ export default function App() {
 
     return () => {
       cancelled = true;
-    };
-  }, [desktopMode]);
-
-  useEffect(() => {
-    if (!desktopMode) {
-      setIsDesktopWindowMaximized(false);
-      return;
-    }
-
-    let cancelled = false;
-    getDesktopWindowMaximizedState()
-      .then((isMaximized) => {
-        if (!cancelled) {
-          setIsDesktopWindowMaximized(isMaximized);
-        }
-      })
-      .catch((error) => {
-        if (!cancelled) {
-          console.warn("Failed to read desktop window state", error);
-        }
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [desktopMode]);
-
-  useEffect(() => {
-    if (!desktopMode) {
-      return;
-    }
-
-    let cancelled = false;
-    let timeoutId: number | null = null;
-
-    const syncWindowState = () => {
-      getDesktopWindowMaximizedState()
-        .then((isMaximized) => {
-          if (!cancelled) {
-            setIsDesktopWindowMaximized(isMaximized);
-          }
-        })
-        .catch((error) => {
-          if (!cancelled) {
-            console.warn("Failed to sync desktop window state", error);
-          }
-        });
-    };
-
-    const handleResize = () => {
-      if (timeoutId !== null) {
-        window.clearTimeout(timeoutId);
-      }
-      timeoutId = window.setTimeout(syncWindowState, 120);
-    };
-
-    window.addEventListener("resize", handleResize);
-    return () => {
-      cancelled = true;
-      if (timeoutId !== null) {
-        window.clearTimeout(timeoutId);
-      }
-      window.removeEventListener("resize", handleResize);
     };
   }, [desktopMode]);
 
@@ -787,63 +713,6 @@ export default function App() {
 
   async function handleOpenDoubanSubject(match: DoubanSubject) {
     await openDoubanUrl(match.url, `已打开《${match.title}》的豆瓣条目。`);
-  }
-
-  async function handleMinimizeWindow() {
-    if (!desktopMode) {
-      return;
-    }
-
-    try {
-      await minimizeDesktopWindow();
-    } catch (error) {
-      setSyncMessage(
-        error instanceof Error ? `最小化窗口失败：${error.message}` : "最小化窗口失败"
-      );
-    }
-  }
-
-  async function handleStartDraggingWindow() {
-    if (!desktopMode) {
-      return;
-    }
-
-    try {
-      await startDraggingDesktopWindow();
-    } catch (error) {
-      setSyncMessage(
-        error instanceof Error ? `拖动窗口失败：${error.message}` : "拖动窗口失败"
-      );
-    }
-  }
-
-  async function handleToggleMaximizeWindow() {
-    if (!desktopMode) {
-      return;
-    }
-
-    try {
-      const nextMaximized = await toggleMaximizeDesktopWindow();
-      setIsDesktopWindowMaximized(nextMaximized);
-    } catch (error) {
-      setSyncMessage(
-        error instanceof Error ? `切换窗口大小失败：${error.message}` : "切换窗口大小失败"
-      );
-    }
-  }
-
-  async function handleCloseWindow() {
-    if (!desktopMode) {
-      return;
-    }
-
-    try {
-      await closeDesktopWindow();
-    } catch (error) {
-      setSyncMessage(
-        error instanceof Error ? `关闭窗口失败：${error.message}` : "关闭窗口失败"
-      );
-    }
   }
 
   async function handleImportSchedule() {
@@ -1362,33 +1231,17 @@ export default function App() {
               </IconButton>
 
               <Box
-                data-tauri-drag-region=""
-                onMouseDown={(event) => {
-                  if (event.button !== 0 || !desktopMode) {
-                    return;
-                  }
-                  void handleStartDraggingWindow();
-                }}
-                onDoubleClick={
-                  desktopMode
-                    ? () => {
-                        void handleToggleMaximizeWindow();
-                      }
-                    : undefined
-                }
                 sx={{
                   alignItems: "center",
-                  cursor: desktopMode ? "grab" : "default",
                   display: "flex",
                   flexGrow: 1,
                   gap: 1.5,
                   minWidth: 0,
                   pr: 1,
-                  userSelect: "none",
-                  WebkitUserSelect: "none"
+                  userSelect: "none"
                 }}
               >
-                <Box sx={{ flexGrow: 1, minWidth: 0, pointerEvents: "none" }}>
+                <Box sx={{ flexGrow: 1, minWidth: 0 }}>
                   <Typography color="text.secondary" variant="body2">
                     {activeMeta.label}
                   </Typography>
@@ -1403,7 +1256,6 @@ export default function App() {
                   sx={{
                     display: { xs: "none", sm: "flex" },
                     flexWrap: "wrap",
-                    pointerEvents: "none",
                     rowGap: 1
                   }}
                 >
@@ -1420,57 +1272,6 @@ export default function App() {
                   />
                 </Stack>
               </Box>
-
-              {desktopMode ? (
-                <Paper
-                  sx={{
-                    alignItems: "center",
-                    backdropFilter: "blur(14px)",
-                    backgroundColor: alpha(theme.palette.background.paper, 0.78),
-                    borderRadius: 999,
-                    boxShadow: "none",
-                    display: "flex",
-                    gap: 0.25,
-                    p: 0.5
-                  }}
-                  variant="outlined"
-                >
-                  <Tooltip title="最小化">
-                    <IconButton
-                      aria-label="最小化窗口"
-                      onClick={handleMinimizeWindow}
-                      size="small"
-                      sx={windowControlButtonSx(theme)}
-                    >
-                      <MinimizeRounded fontSize="small" />
-                    </IconButton>
-                  </Tooltip>
-                  <Tooltip title={isDesktopWindowMaximized ? "还原窗口" : "放大窗口"}>
-                    <IconButton
-                      aria-label={isDesktopWindowMaximized ? "还原窗口" : "放大窗口"}
-                      onClick={handleToggleMaximizeWindow}
-                      size="small"
-                      sx={windowControlButtonSx(theme)}
-                    >
-                      {isDesktopWindowMaximized ? (
-                        <CloseFullscreenRounded fontSize="small" />
-                      ) : (
-                        <OpenInFullRounded fontSize="small" />
-                      )}
-                    </IconButton>
-                  </Tooltip>
-                  <Tooltip title="关闭">
-                    <IconButton
-                      aria-label="关闭窗口"
-                      onClick={handleCloseWindow}
-                      size="small"
-                      sx={windowControlButtonSx(theme, true)}
-                    >
-                      <CloseRounded fontSize="small" />
-                    </IconButton>
-                  </Tooltip>
-                </Paper>
-              ) : null}
             </Box>
           </Toolbar>
         </AppBar>
@@ -2025,21 +1826,6 @@ export default function App() {
       </Box>
     </>
   );
-}
-
-function windowControlButtonSx(theme: Theme, isClose = false) {
-  return {
-    borderRadius: 2.5,
-    color: isClose ? theme.palette.error.main : theme.palette.text.secondary,
-    height: 34,
-    width: 34,
-    "&:hover": {
-      backgroundColor: isClose
-        ? alpha(theme.palette.error.main, 0.12)
-        : alpha(theme.palette.primary.main, 0.08),
-      color: isClose ? theme.palette.error.dark : theme.palette.text.primary
-    }
-  };
 }
 
 function SidebarStatusTile({ label, value }: { label: string; value: string }) {
