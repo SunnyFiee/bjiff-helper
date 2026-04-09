@@ -1,6 +1,5 @@
 import {
   startTransition,
-  useDeferredValue,
   useEffect,
   useState,
   type ElementType
@@ -190,6 +189,7 @@ function matchesFilters(
   query: string,
   filters: ScreeningFilters
 ) {
+  const normalizedQuery = query.trim().toLowerCase();
   const filmMetadata = film.metadata;
   const haystack = [
     film.titleZh,
@@ -210,7 +210,7 @@ function matchesFilters(
     .join(" ")
     .toLowerCase();
 
-  if (query && !haystack.includes(query)) {
+  if (normalizedQuery && !haystack.includes(normalizedQuery)) {
     return false;
   }
   if (filters.date && filters.date !== "all" && screening.date !== filters.date) {
@@ -299,8 +299,8 @@ export default function App() {
   const [deletingItineraryId, setDeletingItineraryId] = useState<string | null>(null);
   const [isClearingItineraries, setIsClearingItineraries] = useState(false);
   const [mobileDrawerOpen, setMobileDrawerOpen] = useState(false);
+  const [appliedSearchQuery, setAppliedSearchQuery] = useState("");
 
-  const deferredQuery = useDeferredValue(filters.query.trim().toLowerCase());
   const desktopMode = isTauriRuntime();
 
   useEffect(() => {
@@ -483,7 +483,7 @@ export default function App() {
     );
   }
 
-  const visibleFilms = buildVisibleFilms(dataset, deferredQuery, filters, selections);
+  const visibleFilms = buildVisibleFilms(dataset, appliedSearchQuery, filters, selections);
   const previewRecommendation = draftRecommendation ?? emptyRecommendation();
   const recommendedIds = new Set(previewRecommendation.selected.map((item) => item.id));
   const screeningsById = new Map<string, Screening>();
@@ -586,6 +586,11 @@ export default function App() {
 
   function handleClearFilters() {
     setFilters({ ...EMPTY_FILTERS });
+    setAppliedSearchQuery("");
+  }
+
+  function handleApplyFilmSearch() {
+    setAppliedSearchQuery(filters.query.trim());
   }
 
   function handleGenerateRecommendationDraft() {
@@ -1781,6 +1786,8 @@ export default function App() {
               markedScreeningCount={markedScreeningCount}
               doubanMatches={doubanMatches}
               isDesktop={desktopMode}
+              appliedQuery={appliedSearchQuery}
+              onApplySearch={handleApplyFilmSearch}
               onClearFilters={handleClearFilters}
               onFiltersChange={setFilters}
               onSearchDouban={handleSearchDouban}
@@ -1914,7 +1921,7 @@ function HeroStat({
       sx={{
         alignItems: "flex-start",
         backgroundColor: alpha("#FFFFFF", 0.74),
-        borderRadius: 4,
+        borderRadius: 2,
         display: "flex",
         flexDirection: "column",
         justifyContent: "center",

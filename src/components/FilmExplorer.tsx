@@ -40,6 +40,7 @@ interface FilmExplorerProps {
   units: string[];
   venues: string[];
   filters: ScreeningFilters;
+  appliedQuery: string;
   recommendedIds: Set<string>;
   currentItineraryIds: Set<string>;
   filmVotes: Record<string, FilmVote | undefined>;
@@ -49,6 +50,7 @@ interface FilmExplorerProps {
   doubanMatches: Record<string, DoubanSubject | undefined>;
   isDesktop: boolean;
   onFiltersChange: (next: ScreeningFilters) => void;
+  onApplySearch: () => void;
   onClearFilters: () => void;
   onFilmVote: (filmId: string, vote?: FilmVote) => void;
   onScreeningVote: (screeningId: string, vote?: ScreeningVote) => void;
@@ -64,6 +66,7 @@ export function FilmExplorer({
   units,
   venues,
   filters,
+  appliedQuery,
   recommendedIds,
   currentItineraryIds,
   filmVotes,
@@ -73,6 +76,7 @@ export function FilmExplorer({
   doubanMatches,
   isDesktop,
   onFiltersChange,
+  onApplySearch,
   onClearFilters,
   onFilmVote,
   onScreeningVote,
@@ -149,6 +153,12 @@ export function FilmExplorer({
                     query: event.target.value
                   })
                 }
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") {
+                    event.preventDefault();
+                    onApplySearch();
+                  }
+                }}
                 placeholder="片名 / 导演 / 主演 / 国家 / 影院"
                 value={filters.query}
               />
@@ -219,10 +229,32 @@ export function FilmExplorer({
                 type="number"
                 value={filters.maxPrice}
               />
-              <Button onClick={onClearFilters} variant="outlined">
-                清空筛选
-              </Button>
+              <Stack direction="row" spacing={1}>
+                <Button onClick={onApplySearch} variant="contained">
+                  搜索
+                </Button>
+                <Button onClick={onClearFilters} variant="outlined">
+                  清空
+                </Button>
+              </Stack>
             </Box>
+            <Stack
+              direction={{ xs: "column", sm: "row" }}
+              spacing={1}
+              sx={{ alignItems: { sm: "center" }, justifyContent: "space-between", mt: 1.5 }}
+            >
+              <Typography color="text.secondary" variant="body2">
+                {appliedQuery ? `当前结果按“${appliedQuery}”检索` : "当前未启用关键词搜索"}
+              </Typography>
+              {filters.query.trim() !== appliedQuery ? (
+                <Chip
+                  color="warning"
+                  label="关键词已修改，点击搜索后更新结果"
+                  size="small"
+                  variant="outlined"
+                />
+              ) : null}
+            </Stack>
           </Paper>
 
           {cards.length === 0 ? (
@@ -233,12 +265,8 @@ export function FilmExplorer({
 
           <Box
             sx={{
-              display: "grid",
-              gap: 2,
-              gridTemplateColumns: {
-                xs: "1fr",
-                xl: "repeat(2, minmax(0, 1fr))"
-              }
+              columnCount: { xs: 1, xl: 2 },
+              columnGap: 2
             }}
           >
             {visibleCards.map(({ film, screenings }) => {
@@ -254,16 +282,23 @@ export function FilmExplorer({
               const filmMetadata = film.metadata;
 
               return (
-                <Card key={film.id} sx={{ overflow: "hidden" }}>
-                  <Box
-                    sx={{
-                      display: "grid",
-                      gridTemplateColumns: {
-                        xs: "1fr",
-                        lg: "minmax(0, 1fr) 240px"
-                      }
-                    }}
-                  >
+                <Box
+                  key={film.id}
+                  sx={{
+                    breakInside: "avoid",
+                    mb: 2
+                  }}
+                >
+                  <Card sx={{ display: "inline-block", overflow: "hidden", width: "100%" }}>
+                    <Box
+                      sx={{
+                        display: "grid",
+                        gridTemplateColumns: {
+                          xs: "1fr",
+                          lg: "minmax(0, 1fr) 240px"
+                        }
+                      }}
+                    >
                     <CardContent sx={{ p: 2.5 }}>
                       <Stack spacing={1.75}>
                         <Stack
@@ -451,12 +486,12 @@ export function FilmExplorer({
                         </Stack>
                       </Stack>
                     </Box>
-                  </Box>
+                    </Box>
 
-                  <Divider />
+                    <Divider />
 
-                  <CardContent sx={{ p: 2.5 }}>
-                    <Stack spacing={1.5}>
+                    <CardContent sx={{ p: 2.5 }}>
+                      <Stack spacing={1.5}>
                       <Stack direction="row" spacing={1} sx={{ flexWrap: "wrap", rowGap: 1 }}>
                         <Chip label={`${screenings.length} 场符合当前筛选`} size="small" />
                         <Chip
@@ -705,9 +740,10 @@ export function FilmExplorer({
                           ) : null}
                         </Stack>
                       </Paper>
-                    </Stack>
-                  </CardContent>
-                </Card>
+                      </Stack>
+                    </CardContent>
+                  </Card>
+                </Box>
               );
             })}
           </Box>
